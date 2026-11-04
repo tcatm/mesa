@@ -84,3 +84,20 @@ a deposit that lands after the price moved is never stuck.
 **Checked live.** The package reads both networks' queues, and tracked a real
 mainnet deposit (sent through BOXA, which adds a 2% fee to the same official
 deposit) to "credited" when batch 267 landed.
+
+## 2026-11-04: relay
+
+**Shipped.** `relay/`, an Elysium RPC for wallets that posts signed
+transactions to the official inbox on HyperEVM until the public sequencer
+opens, and `render.yaml` to host it.
+
+**Checked live.** On testnet, a transaction sent to the relay executed on
+Elysium about two minutes later, from the signer's own address. Two other
+findings: a transaction sent from HyperEVM with the inbox's
+`sendUnsignedTransaction` runs as the sender's aliased address, so it cannot
+withdraw an account's own funds; and a full testnet deposit, withdrawal and
+claim round trip worked, with the claim available after the next state
+assertion (about every 15 minutes on testnet).
+
+**Mainnet RPCs.** `rpc.agoradex.app` and BOXA's live RPC serve the state the
+next batch will produce; BOXA's plain RPC serves confirmed state only.

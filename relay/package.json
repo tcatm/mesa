@@ -1,0 +1,26 @@
+{
+  "name": "@mesa/relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Elysium JSON-RPC endpoint that relays signed transactions through the official HyperEVM inbox until Elysium's public sequencer opens.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit",
+    "start": "node dist/server.js",
+    "dev": "tsx src/server.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "ethers": "5.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.9.0",
+    "tsx": "4.19.2",
+    "typescript": "5.6.3"
+  }
+}

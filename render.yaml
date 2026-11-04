@@ -1,0 +1,24 @@
+# Render blueprint for the Mesa relay (Elysium RPC for wallets).
+# Use a paid instance: free instances sleep when idle, and wallets time out.
+services:
+  - type: web
+    name: mesa-relay
+    runtime: node
+    rootDir: relay
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NETWORK
+        value: mainnet
+      - key: MODE
+        value: inbox # switch to "direct" once Elysium's public sequencer opens
+      - key: UPSTREAM_RPC
+        value: https://rpc.agoradex.app
+      - key: PARENT_RPC
+        sync: false # a HyperEVM RPC with headroom, e.g. a dRPC key
+      - key: RELAYER_KEY
+        sync: false # HyperEVM key that pays inbox gas; keep only a little HYPE on it
+      - key: ALLOW_TO
+        sync: false # comma-separated contracts relayed transactions may call
