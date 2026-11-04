@@ -24,7 +24,12 @@
  *   UPSTREAM_RPC   Elysium RPC for reads; ideally one that includes pending inbox messages
  *   PARENT_RPC     HyperEVM RPC
  *   MODE           inbox | direct                     (default inbox)
- *   ALLOW_TO       comma-separated contract addresses a relayed transaction may call; empty = any
+ *   ALLOW_TO       comma-separated contract addresses a relayed transaction may call
+ *   MESA_HOOK      also allow the hook and any token it launched (checked on chain)
+ *   ALLOW_ANY      "true" to relay to any address (not recommended; default false)
+ *   MAX_HYPE_PER_HOUR   relayer gas budget per rolling hour, in HYPE     (default 0.05)
+ *   MAX_RELAYS_PER_HOUR                                                   (default 300)
+ *   READ_PER_IP_PER_MIN, MAX_BATCH, MAX_LOG_RANGE                         (defaults 600, 50, 10000)
  *   MAX_GAS        largest gas limit relayed           (default 5000000)
  *   PER_SENDER_PER_MIN, PER_IP_PER_MIN                 (defaults 10, 60)
  *   PORT           (default 8545)
@@ -61,7 +66,15 @@ const allowTo = new Set(
     .map((a) => a.trim().toLowerCase())
     .filter(Boolean),
 )
+const allowAny = env.ALLOW_ANY === 'true'
+const mesaHook = env.MESA_HOOK?.toLowerCase()
+const maxHypePerHour = utils.parseEther(env.MAX_HYPE_PER_HOUR ?? '0.05')
+const maxRelaysPerHour = Number(env.MAX_RELAYS_PER_HOUR ?? 300)
+const readPerIp = Number(env.READ_PER_IP_PER_MIN ?? 600)
+const maxBatch = Number(env.MAX_BATCH ?? 50)
+const maxLogRange = Number(env.MAX_LOG_RANGE ?? 10_000)
 const maxGas = BigNumber.from(env.MAX_GAS ?? 5_000_000)
+const maxPendingPerSender = Number(env.MAX_PENDING_PER_SENDER ?? 8)
 const perSender = Number(env.PER_SENDER_PER_MIN ?? 10)
 const perIp = Number(env.PER_IP_PER_MIN ?? 60)
 
@@ -104,6 +117,63 @@ function limited(key: string, perMin: number): boolean {
   w.push(now)
   windows.set(key, w)
   return false
+}
+
+// ---------------------------------------------------------------- budget, policy, stats
+
+/** Relayer HyperEVM spend in the last hour: an upper bound at send, the real cost once mined. */
+const spends: { at: number; cost: BigNumber }[] = []
+function spentLastHour(): BigNumber {
+  const cutoff = Date.now() - 3600_000
+  while (spends.length && spends[0].at < cutoff) spends.shift()
+  return spends.reduce((a, s) => a.add(s.cost), BigNumber.from(0))
+}
+
+export const stats = {
+  startedAt: new Date().toISOString(),
+  relayed: 0,
+  rejected: {} as Record<string, number>,
+  reads: 0,
+  lastRelayAt: null as string | null,
+}
+function reject(reason: string, code: number, message: string): never {
+  stats.rejected[reason] = (stats.rejected[reason] ?? 0) + 1
+  throw new RpcError(code, message)
+}
+
+/**
+ * eth_call that throws on revert. ethers v5's provider.call returns a
+ * reverted call's revert data as if it were a result, so it is not used here.
+ */
+async function rawCall(t: { from?: string; to?: string; data?: string; value?: BigNumber; gasLimit?: BigNumber }): Promise<string> {
+  const q: Record<string, string> = {}
+  if (t.from) q.from = t.from
+  if (t.to) q.to = t.to
+  if (t.data) q.data = t.data
+  if (t.value && !t.value.isZero()) q.value = utils.hexValue(t.value)
+  if (t.gasLimit) q.gas = utils.hexValue(t.gasLimit)
+  return (await upstream.send('eth_call', [q, 'latest'])) as string
+}
+
+const mesaTokenCache = new Map<string, boolean>()
+const hookIface = new utils.Interface(['function poolOf(address) view returns (bytes32)'])
+/** Whether a relayed transaction may call `to`. */
+async function allowed(to: string | undefined): Promise<boolean> {
+  if (allowAny) return true
+  if (!to) return false // contract creation
+  const a = to.toLowerCase()
+  if (allowTo.has(a) || a === mesaHook) return true
+  if (!mesaHook) return false
+  const cached = mesaTokenCache.get(a)
+  if (cached !== undefined) return cached
+  try {
+    const id = await rawCall({ to: mesaHook, data: hookIface.encodeFunctionData('poolOf', [a]) })
+    const ok = BigNumber.from(id).gt(0)
+    mesaTokenCache.set(a, ok)
+    return ok
+  } catch {
+    return false
+  }
 }
 
 /** Relayer sends are serialized so its HyperEVM nonces never collide. */
@@ -168,12 +238,13 @@ async function sendRaw(raw: string, ip: string): Promise<string> {
   if (!tx.from || !tx.hash) throw new RpcError(-32602, 'unsigned transaction')
   if (tx.chainId !== cfg.chainId) throw new RpcError(-32602, `wrong chain: expected ${cfg.chainId}`)
   if (tx.gasLimit.gt(maxGas)) throw new RpcError(-32602, `gas limit above ${maxGas}`)
-  if (allowTo.size > 0 && (!tx.to || !allowTo.has(tx.to.toLowerCase()))) {
-    throw new RpcError(-32003, 'this relay only sends transactions to Mesa contracts')
-  }
+  if (!(await allowed(tx.to))) reject('not-allowed', -32003, 'this relay only sends transactions to Mesa contracts')
   const from = tx.from.toLowerCase()
   if (pending.has(tx.hash)) return tx.hash
-  if (limited(`ip:${ip}`, perIp) || limited(`from:${from}`, perSender)) throw new RpcError(-32005, 'rate limited')
+  if (limited(`ip:${ip}`, perIp) || limited(`from:${from}`, perSender)) reject('rate-limited', -32005, 'rate limited')
+  if (spentLastHour().gte(maxHypePerHour) || spends.length >= maxRelaysPerHour) {
+    reject('budget', -32005, 'the relay is at its hourly limit; try again shortly')
+  }
 
   // Reject what Elysium would reject, so no inbox gas is spent on it.
   const [chainNonce, balance] = await Promise.all([
@@ -181,11 +252,34 @@ async function sendRaw(raw: string, ip: string): Promise<string> {
     upstream.getBalance(tx.from, 'pending'),
   ])
   const expected = Math.max(chainNonce, nextNonce.get(from) ?? 0)
-  if (tx.nonce !== expected) throw new RpcError(-32000, `nonce ${tx.nonce} is not the next one (${expected})`)
+  if (tx.nonce !== expected) reject('nonce', -32000, `nonce ${tx.nonce} is not the next one (${expected})`)
   const price = tx.maxFeePerGas ?? tx.gasPrice ?? BigNumber.from(0)
-  if (balance.lt(tx.gasLimit.mul(price).add(tx.value))) throw new RpcError(-32000, 'insufficient funds for gas * price + value')
+  if (balance.lt(tx.gasLimit.mul(price).add(tx.value))) reject('funds', -32000, 'insufficient funds for gas * price + value')
+
+  // A transaction that would revert is not worth inbox gas. One exception:
+  // it may depend on the sender's previous relayed transaction, still
+  // waiting for the batch (an approval, then a swap), so with exactly one
+  // waiting it goes through. More than that and it must simulate cleanly.
+  const waiting = [...pending.values()].filter((r) => r.from === from).length
+  if (waiting >= maxPendingPerSender) reject('too-many-pending', -32005, `${waiting} transactions already waiting for the next batch`)
+  try {
+    await rawCall({ from: tx.from, to: tx.to ?? undefined, data: tx.data, value: tx.value, gasLimit: tx.gasLimit })
+  } catch (e) {
+    if (waiting !== 1) {
+      const why = (e as { body?: string; message?: string })?.body?.match(/"message":"([^"]+)"/)?.[1] ?? 'execution reverted'
+      reject('would-revert', 3, `would revert on Elysium: ${why}`)
+    }
+  }
 
   const sent = await serial(async () => (await inbox.sendL2Message(utils.hexConcat([SIGNED_TX, raw]))) as providers.TransactionResponse)
+  const spend = { at: Date.now(), cost: sent.gasLimit.mul(sent.maxFeePerGas ?? sent.gasPrice ?? 0) }
+  spends.push(spend)
+  void sent
+    .wait()
+    .then((r) => (spend.cost = r.gasUsed.mul(r.effectiveGasPrice)))
+    .catch(() => undefined)
+  stats.relayed += 1
+  stats.lastRelayAt = new Date().toISOString()
   pending.set(tx.hash, { hash: tx.hash, from, nonce: tx.nonce, raw, parentTx: sent.hash, at: Date.now(), tx })
   nextNonce.set(from, tx.nonce + 1)
   console.log(JSON.stringify({ relayed: tx.hash, from, nonce: tx.nonce, to: tx.to, parentTx: sent.hash }))
@@ -217,8 +311,23 @@ function pendingTxObject(r: Relayed) {
   }
 }
 
+const BLOCKED = /^(debug_|trace_|admin_|personal_|txpool_|miner_|engine_|eth_sign|eth_sendTransaction$|eth_accounts$)/
+
 async function handle(req: RpcReq, ip: string): Promise<unknown> {
   const p = req.params ?? []
+  if (BLOCKED.test(req.method)) reject('method', -32601, `method ${req.method} is not available`)
+  if (req.method !== 'eth_sendRawTransaction') {
+    if (limited(`read:${ip}`, readPerIp)) reject('read-rate', -32005, 'rate limited')
+    stats.reads += 1
+  }
+  if (req.method === 'eth_getLogs') {
+    const f = (p[0] ?? {}) as { fromBlock?: string; toBlock?: string; blockHash?: string }
+    if (!f.blockHash) {
+      const head = await upstream.getBlockNumber()
+      const n = (t?: string) => (!t || t === 'latest' || t === 'pending' || t === 'safe' || t === 'finalized' ? head : t === 'earliest' ? 0 : parseInt(t, 16))
+      if (n(f.toBlock) - n(f.fromBlock) > maxLogRange) reject('log-range', -32005, `eth_getLogs is limited to ${maxLogRange} blocks`)
+    }
+  }
   switch (req.method) {
     case 'eth_chainId':
       return utils.hexValue(cfg.chainId)
@@ -290,6 +399,14 @@ const server = createServer(async (req, res) => {
         relayer: relayer?.address ?? null,
         relayerBalance: relayerBalance ? utils.formatEther(relayerBalance) : null,
         pending: pending.size,
+        relayedTotal: stats.relayed,
+        rejected: stats.rejected,
+        reads: stats.reads,
+        startedAt: stats.startedAt,
+        lastRelayAt: stats.lastRelayAt,
+        spentLastHour: utils.formatEther(spentLastHour()),
+        budgetPerHour: utils.formatEther(maxHypePerHour),
+        policy: allowAny ? 'any' : { allowTo: [...allowTo], mesaHook: mesaHook ?? null },
       }),
     )
   }
@@ -301,6 +418,10 @@ const server = createServer(async (req, res) => {
   } catch {
     res.writeHead(400, { 'content-type': 'application/json' })
     return res.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } }))
+  }
+  if (Array.isArray(parsed) && parsed.length > maxBatch) {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    return res.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32005, message: `batches are limited to ${maxBatch} requests` } }))
   }
   const out = Array.isArray(parsed) ? await Promise.all(parsed.map((r) => one(r, ip))) : await one(parsed, ip)
   res.writeHead(200, { 'content-type': 'application/json' })

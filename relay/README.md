@@ -10,11 +10,30 @@ or forge a transaction: it only forwards what the user signed.
 
 | Method | Behaviour |
 |---|---|
-| `eth_sendRawTransaction` | Checked (chain, signature, gas cap, nonce, balance, rate limits, optional `ALLOW_TO`), then posted to the inbox. Returns the Elysium transaction hash. |
+| `eth_sendRawTransaction` | Checked, then posted to the inbox. Returns the Elysium transaction hash. |
 | `eth_getTransactionCount` (`pending`) | Includes relayed transactions not executed yet, so wallets do not reuse a nonce. |
 | `eth_getTransactionByHash` | Shows a relayed transaction as pending until it executes. |
 | `mesa_relayStatus` | The HyperEVM transaction that carried a relayed one. |
 | anything else | Forwarded to `UPSTREAM_RPC`. |
+
+Checks before a transaction is relayed, so the relayer's HyperEVM gas is
+spent only on transactions that will do something:
+
+- chain id, signature, gas limit cap, exact next nonce, and enough HYPE on
+  Elysium for the sender's own gas and value;
+- the target is allowed: `ALLOW_TO`, or with `MESA_HOOK` set, the hook or any
+  token it launched (checked on chain);
+- it simulates cleanly against current state. The one exception is a sender
+  with exactly one relayed transaction still waiting, since the new one may
+  depend on it (an approval, then a swap). At most 8 may wait per sender;
+- rate limits per sender and per IP, and a rolling hourly budget for the
+  relayer's spend (`MAX_HYPE_PER_HOUR`, `MAX_RELAYS_PER_HOUR`). Over budget,
+  transactions are refused and reads keep working.
+
+Reads: `debug_`, `trace_`, `admin_`, `personal_`, `txpool_` and signing
+methods are refused; `eth_getLogs` is limited to 10,000 blocks, batches to 50
+requests, and reads to 600 a minute per IP. `/health` reports relay counts,
+rejections by reason, and the hour's spend.
 
 With `MODE=direct`, transactions are forwarded upstream and the relay is a
 plain proxy: the setting for after the public sequencer opens.
