@@ -95,14 +95,23 @@ const TOKEN_FIELDS = `
 const num = (s: string | null | undefined) => (s === null || s === undefined || s === '' ? null : Number(s))
 
 /**
- * Market caps from total supply can be absurd (bridged assets whose supply
- * counts every chain). Above $500B there is no real token on HyperEVM, so the
- * figure is dropped rather than shown.
+ * Market caps come from total supply, which for bridged and multichain assets
+ * (USDC, UBTC, UETH) counts every chain, not this one. Such a figure is many
+ * thousand times the token's liquidity here, so above that ratio (or above
+ * $500B outright) it is dropped rather than shown. Real tokens sit far below:
+ * WHYPE ~55x, KNTQ ~200x its liquidity.
  */
 const MAX_PLAUSIBLE_MCAP = 5e11
+const MAX_MCAP_TO_LIQUIDITY = 20_000
+
+function plausibleMcap(mcap: number | null, liquidity: number | null): number | null {
+  if (mcap === null || mcap > MAX_PLAUSIBLE_MCAP) return null
+  if (liquidity !== null && liquidity > 0 && mcap / liquidity > MAX_MCAP_TO_LIQUIDITY) return null
+  return mcap
+}
 
 function shape(t: RawToken) {
-  const mcap = num(t.circulatingMarketCap) ?? num(t.marketCap)
+  const mcap = plausibleMcap(num(t.circulatingMarketCap) ?? num(t.marketCap), num(t.liquidity))
   return {
     address: t.token.address,
     symbol: t.token.symbol ?? '?',
@@ -112,7 +121,7 @@ function shape(t: RawToken) {
     change1h: num(t.change1),
     change24h: num(t.change24),
     volume24hUsd: num(t.volume24),
-    marketCapUsd: mcap !== null && mcap <= MAX_PLAUSIBLE_MCAP ? mcap : null,
+    marketCapUsd: mcap,
     liquidityUsd: num(t.liquidity),
     trades24h: t.txnCount24,
     buys24h: t.buyCount24,

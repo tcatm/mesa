@@ -18,8 +18,8 @@ plan's compute units scale with distinct pages viewed, not with visitors.
 | `GET /hyperevm/tokens/:address/trades?cursor=` | 4 s (latest), 60 s (older pages) |
 | `GET /health` | none |
 
-Market caps above $500B are dropped (`marketCapUsd: null`): they come from
-total supplies counted across chains (for example bridged BTC), not from
-HyperEVM.
+Market caps above $500B, or more than 20,000 times the token's HyperEVM
+liquidity, are dropped (`marketCapUsd: null`): they come from total supplies
+counted across chains (USDC, bridged BTC and ETH), not from HyperEVM.
 
     CODEX_API_KEY=… npm run dev
