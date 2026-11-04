@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 740" width="1300" height="740" role="img" aria-label="Mesa">
+  <title>Mesa</title>
+  <path fill="#0F0D0C" d="M64 0 H1236 A64 64 0 0 1 1300 64 V676 A64 64 0 0 1 1236 740 H64 A64 64 0 0 1 0 676 V64 A64 64 0 0 1 64 0 Z"/>
+  <path fill="#97FCE4" d="M357 180 L539 180 L650 439 L499 439 L370 740 L117 740 Z M761 180 L943 180 L1054 439 L903 439 L774 740 L521 740 Z M1054 439 L1183 740 L925 740 Z"/>
+</svg>

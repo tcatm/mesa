@@ -14,6 +14,8 @@ of the M's pixels; the remainder is the original's soft, uneven edges.
 | `mesa-mark*.svg` | The M alone. `mesa-mark.svg` takes the surrounding text colour (`currentColor`). |
 | `mesa-badge-knockout*.svg` | The badge with the M as negative space: the background shows through the M. |
 | `mesa-badge-*.svg` | The badge in two solid colours (black, white, night, sandstone, night-mint, mint), for any background. |
+| `mesa-wide-knockout*.svg` | The wide badge: a rounded rectangle (1300 × 740, radius 64) with the M knocked out, standing on the bottom edge so its legs open the rectangle. |
+| `mesa-wide-*.svg` | The wide badge in two solid colours (black, white, night, sandstone, night-mint, mint). PNGs at 1300 wide in `png/`. |
 | `mesa-icon-*.svg` | Full-bleed squares for app icons and avatars (platforms round the corners). |
 | `png/` | Favicon (`favicon.ico`, 16 to 48) and PWA icons (192, 512) from the night badge; Apple touch icons (180) and avatars (1024) in night and black. |
 

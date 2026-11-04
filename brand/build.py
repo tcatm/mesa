@@ -38,6 +38,34 @@ def mark_path(dx=0.0, dy=0.0):
     return " ".join(poly(s, dx, dy) for s in SHAPES)
 
 
+# The wide badge: a rounded rectangle with the M knocked out and standing on
+# its bottom edge, so the legs open the rectangle at the bottom. Proportions
+# from the reference: 1300 x 740, corner radius 64, M centred, its base on the
+# bottom edge.
+WIDE_W, WIDE_H, WIDE_R = 1300, 740, 64
+WIDE_X, WIDE_Y = (WIDE_W - MARK_W) / 2, WIDE_H - MARK_H
+
+
+def rounded_rect(w, h, r):
+    return (
+        f"M{r} 0 H{w - r} A{r} {r} 0 0 1 {w} {r} V{h - r} "
+        f"A{r} {r} 0 0 1 {w - r} {h} H{r} A{r} {r} 0 0 1 0 {h - r} V{r} A{r} {r} 0 0 1 {r} 0 Z"
+    )
+
+
+def wide_knockout(fill):
+    d = rounded_rect(WIDE_W, WIDE_H, WIDE_R) + " " + mark_path(WIDE_X, WIDE_Y)
+    return svg(WIDE_W, WIDE_H, f'  <path fill="{fill}" fill-rule="evenodd" d="{d}"/>', "Mesa")
+
+
+def wide_solid(rect, m):
+    body = (
+        f'  <path fill="{rect}" d="{rounded_rect(WIDE_W, WIDE_H, WIDE_R)}"/>\n'
+        f'  <path fill="{m}" d="{mark_path(WIDE_X, WIDE_Y)}"/>'
+    )
+    return svg(WIDE_W, WIDE_H, body, "Mesa")
+
+
 def rounded_square(size, r):
     return (
         f"M{r} 0 H{size - r} A{r} {r} 0 0 1 {size} {r} V{size - r} "
@@ -96,6 +124,19 @@ VARIANTS = {
     "mesa-badge-sandstone": badge_solid(SANDSTONE, NIGHT),
     "mesa-badge-night-mint": badge_solid(NIGHT, MINT),
     "mesa-badge-mint": badge_solid(MINT, NIGHT),
+    # The wide badge: rounded rectangle, M knocked out to its bottom edge.
+    "mesa-wide-knockout": wide_knockout("currentColor"),
+    "mesa-wide-knockout-black": wide_knockout(BLACK),
+    "mesa-wide-knockout-white": wide_knockout(WHITE),
+    "mesa-wide-knockout-sandstone": wide_knockout(SANDSTONE),
+    "mesa-wide-knockout-mint": wide_knockout(MINT),
+    # The wide badge in two solid colours.
+    "mesa-wide-black": wide_solid(BLACK, WHITE),
+    "mesa-wide-white": wide_solid(WHITE, BLACK),
+    "mesa-wide-night": wide_solid(NIGHT, SANDSTONE),
+    "mesa-wide-sandstone": wide_solid(SANDSTONE, NIGHT),
+    "mesa-wide-night-mint": wide_solid(NIGHT, MINT),
+    "mesa-wide-mint": wide_solid(MINT, NIGHT),
     # Full-bleed squares for app icons, avatars and favicons.
     "mesa-icon-black": icon(BLACK, WHITE),
     "mesa-icon-white": icon(WHITE, BLACK),
