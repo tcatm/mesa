@@ -14,6 +14,7 @@ import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
 import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
+import {FullMath} from "v4-core/src/libraries/FullMath.sol";
 
 import {MesaHook} from "../src/MesaHook.sol";
 import {MesaToken} from "../src/MesaToken.sol";
@@ -24,7 +25,7 @@ contract MesaHookTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
-    int24 constant INITIAL_TICK = 161_200; // ≈ 100 HYPE virtual reserve for 1B tokens
+    int24 constant INITIAL_TICK = 173_200; // starting market cap ≈ 30 HYPE
     uint16 constant CREATOR_SHARE = 7_000;
     uint256 constant SUPPLY = 1_000_000_000e18;
     uint256 constant BPS = 10_000;
@@ -227,10 +228,14 @@ contract MesaHookTest is Test, Deployers {
         new MesaHook(manager, CREATOR_SHARE, -400_000, genesis, owner, keeper, 10 ether);
     }
 
-    function test_virtualReserveIsAbout100Hype() public {
+    function test_startingMarketCapIsAbout30Hype() public {
         (, PoolKey memory k) = launch(params(), 0);
-        // x·y = k with 100 HYPE virtual: 100 HYPE (net of 1% fee) buys ~half the supply.
-        BalanceDelta d = buyExactIn(alice, k, 101 ether);
+        (uint160 sqrtP,,,) = manager.getSlot0(k.toId());
+        // price = tokens per HYPE; market cap = supply / price.
+        uint256 tokensPerHype = FullMath.mulDiv(uint256(sqrtP), uint256(sqrtP), 1 << 192);
+        assertApproxEqRel(SUPPLY / tokensPerHype, 30.09e18, 0.001e18, "about 30 HYPE");
+        // x·y = k with 30 HYPE virtual: 30 HYPE (net of the 1% fee) buys ~half the supply.
+        BalanceDelta d = buyExactIn(alice, k, 30.31 ether);
         assertApproxEqRel(uint256(uint128(d.amount1())), SUPPLY / 2, 0.01e18);
     }
 
@@ -342,17 +347,17 @@ contract MesaHookTest is Test, Deployers {
         uint256 t0 = block.timestamp;
         (, PoolKey memory k) = launch(p, 0);
 
-        buyExactIn(alice, k, 0.5 ether); // well under 1%
+        buyExactIn(alice, k, 0.1 ether); // ~0.33% of supply
         assertEq(hookErrorOf(alice, k, swapParams(true, -5 ether), 5 ether), MesaHook.MaxBuyExceeded.selector);
 
         // Splitting into many swaps inside one transaction does not get around it.
         MultiSwapper s = new MultiSwapper(manager);
         IPoolManager.SwapParams[] memory ps = new IPoolManager.SwapParams[](3);
         for (uint256 i; i < 3; ++i) {
-            ps[i] = swapParams(true, -0.5 ether);
+            ps[i] = swapParams(true, -0.15 ether); // ~0.5% each, ~1.5% together
         }
         vm.prank(bob);
-        (bool ok, bytes memory err) = address(s).call{value: 1.5 ether}(abi.encodeCall(MultiSwapper.run, (k, ps)));
+        (bool ok, bytes memory err) = address(s).call{value: 0.45 ether}(abi.encodeCall(MultiSwapper.run, (k, ps)));
         assertFalse(ok);
         assertEq(unwrap(err), MesaHook.MaxBuyExceeded.selector);
 
@@ -361,17 +366,17 @@ contract MesaHookTest is Test, Deployers {
     }
 
     function test_devBuy_declaredCappedAndCharged() public {
-        (MesaToken t,) = launch(params(), 10 ether);
+        (MesaToken t,) = launch(params(), 3 ether); // ~9% of supply
         uint256 dev = t.balanceOf(creator);
         assertGt(dev, 0);
         assertLe(dev, SUPPLY / 10);
-        assertEq(hook.accrued(feeTo), 0.07 ether, "1% fee on the dev buy");
-        assertEq(creator.balance, 990 ether);
+        assertEq(hook.accrued(feeTo), 0.021 ether, "1% fee on the dev buy");
+        assertEq(creator.balance, 997 ether);
         assertSolvent();
 
         vm.prank(creator);
-        vm.expectPartialRevert(MesaHook.DevBuyTooLarge.selector); // ~13% of supply at 15 HYPE
-        hook.launch{value: 15 ether}(params());
+        vm.expectPartialRevert(MesaHook.DevBuyTooLarge.selector); // ~12% of supply at 4 HYPE
+        hook.launch{value: 4 ether}(params());
     }
 
     // ------------------------------------------------------------ locks

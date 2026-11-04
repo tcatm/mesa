@@ -19,7 +19,7 @@ value, the contract rejects anything outside the range shown.
 | Value | Default | Meaning |
 |---|---|---|
 | Creator share | 70% | Share of the base fee to the token's fee recipient. The rest buys and burns $MESA. |
-| Starting price | tick 161,200 | About 100 HYPE of virtual reserve against 1B tokens |
+| Starting price | tick 173,200 | A market cap of about 30 HYPE (30 HYPE of virtual reserve against 1B tokens) |
 | Supply | 1,000,000,000 | Every token, all of it in the pool at launch |
 | LP fee | 0 | Mesa fees replace the pool's LP fee |
 | Buyback per call | 10 HYPE | Largest single buyback |

@@ -70,7 +70,7 @@ contract BatchSwapper is IUnlockCallback {
 /// Swap-accounting checks across every swap kind, added during the
 /// independent review of the fee and partial-fill fixes.
 contract SwapsTest is Test, Deployers {
-    int24 constant INITIAL_TICK = 161_200;
+    int24 constant INITIAL_TICK = 173_200;
     uint256 constant SUPPLY = 1_000_000_000e18;
     uint160 constant FLAGS = Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
         | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_DONATE_FLAG
@@ -138,7 +138,9 @@ contract SwapsTest is Test, Deployers {
         uint32 elapsed,
         bool protocolFee
     ) public {
-        hypeIn = uint96(bound(hypeIn, 1e9, 300 ether));
+        // Up to 2x the 30 HYPE virtual reserve (about two thirds of supply), so the
+        // later exact-output buy of a quarter of that still exists in the pool.
+        hypeIn = uint96(bound(hypeIn, 1e9, 60 ether));
         buyFee = uint16(bound(buyFee, 100, 1_000));
         sellFee = uint16(bound(sellFee, 100, 1_000));
         sniper = uint16(bound(sniper, 0, 3_000));
@@ -258,10 +260,10 @@ contract SwapsTest is Test, Deployers {
         vm.prank(alice);
         (address tok, PoolKey memory k) = hook.launch(params(100, 100, 0, 60, 100)); // 1% per tx
         for (uint256 i; i < 5; ++i) {
-            swap(i % 2 == 0 ? alice : bob, k, sp(true, -0.9 ether), 0.9 ether);
+            swap(i % 2 == 0 ? alice : bob, k, sp(true, -0.25 ether), 0.25 ether); // ~0.8% each, under the 1% cap
         }
         uint256 bought = MesaToken(tok).balanceOf(alice) + MesaToken(tok).balanceOf(bob);
         emit log_named_decimal_uint("bought / cap, same block", bought * 100 / SUPPLY, 0);
-        assertGt(bought, 4 * SUPPLY / 100);
+        assertGt(bought, 3 * SUPPLY / 100, "separate transactions together exceed the per-transaction cap");
     }
 }

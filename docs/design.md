@@ -35,9 +35,10 @@ token `BuybackBurner` can ever buy.
    tokens to the caller. A dev buy above 10% of supply reverts.
 
 The starting price is the same for every launch and is fixed at deployment
-(`initialTick`). The default, tick 161,200, behaves like a constant-product
-curve with a virtual reserve of about 100 HYPE against 1B tokens: roughly 100
-HYPE buys half the supply.
+(`initialTick`). The default, tick 173,200, starts every token at a market cap
+of about 30 HYPE. It behaves like a constant-product curve with a virtual
+reserve of 30 HYPE against 1B tokens: roughly 30 HYPE buys half the supply,
+and each further share costs more, without limit, so the pool never runs out.
 
 ## Fees
 

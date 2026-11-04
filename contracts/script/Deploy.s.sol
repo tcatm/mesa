@@ -27,15 +27,22 @@ import {HookMiner} from "./HookMiner.sol";
 ///   MESA_KEEPER           BuybackBurner keeper (runs buybacks)
 /// Optional env (defaults):
 ///   CREATOR_SHARE_BPS     7000       share of base fees to a token's fee recipient
-///   INITIAL_TICK          161200     starting price: about 100 HYPE virtual reserve
+///   INITIAL_TICK          173200     starting market cap: about 30 HYPE
 ///   BUYBACK_MAX_PER_CALL  10 ether
 ///
 /// This file deliberately does not import the PoolManager source: doing so
 /// would compile MesaHook here with Uniswap's high optimizer settings instead
 /// of the production profile.
 contract Deploy is Script {
+    uint256 internal constant ELYSIUM = 99_901;
     uint256 internal constant ELYSIUM_TESTNET = 99_801;
     uint256 internal constant LOCAL = 31_337;
+    /// Official Uniswap v4 PoolManager on Elysium (Uniswap deployer
+    /// 0x2179a60856e37dfeaaca0ab043b931fe224b27b6), per two independent
+    /// sources (docs/elysium.md). Not ElysPump's separate PoolManager
+    /// 0x5fb015a49f5b35073f9ce01c2adb287a75f89600. Re-verify on the explorer
+    /// before deploying.
+    address internal constant ELYSIUM_POOL_MANAGER = 0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1;
 
     uint160 internal constant FLAGS = Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
         | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_DONATE_FLAG
@@ -60,7 +67,7 @@ contract Deploy is Script {
                 rehearsal: vm.envOr("DEPLOY_POOL_MANAGER", false),
                 poolManager: vm.envOr("POOL_MANAGER", address(0)),
                 creatorShareBps: vm.envOr("CREATOR_SHARE_BPS", uint256(7_000)),
-                initialTick: vm.envOr("INITIAL_TICK", int256(161_200)),
+                initialTick: vm.envOr("INITIAL_TICK", int256(173_200)),
                 genesis: vm.envAddress("MESA_GENESIS_LAUNCHER"),
                 owner: vm.envAddress("MESA_OWNER"),
                 keeper: vm.envAddress("MESA_KEEPER"),
@@ -76,6 +83,9 @@ contract Deploy is Script {
         require(s.initialTick > -887_272 && s.initialTick < 887_272, "INITIAL_TICK out of range");
         require(s.genesis != address(0) && s.owner != address(0) && s.keeper != address(0), "zero address");
         require(s.maxPerCall > 0, "BUYBACK_MAX_PER_CALL is 0");
+        if (block.chainid == ELYSIUM) {
+            require(s.poolManager == ELYSIUM_POOL_MANAGER, "not the official Elysium PoolManager");
+        }
     }
 
     function deploy(Settings memory s) public returns (MesaHook hook, BuybackBurner burner, IPoolManager manager) {

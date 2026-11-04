@@ -23,7 +23,7 @@ contract DeployTest is Test {
             rehearsal: true,
             poolManager: address(0),
             creatorShareBps: 7_000,
-            initialTick: 161_200,
+            initialTick: 173_200,
             genesis: makeAddr("genesis"),
             owner: makeAddr("owner"),
             keeper: makeAddr("keeper"),
@@ -37,7 +37,7 @@ contract DeployTest is Test {
         assertEq(hook.protocolRecipient(), address(burner));
         assertEq(address(burner.hook()), address(hook));
         assertEq(hook.creatorShareBps(), 7_000);
-        assertEq(hook.initialTick(), 161_200);
+        assertEq(hook.initialTick(), 173_200);
         assertEq(hook.genesisLauncher(), makeAddr("genesis"));
         // The production build, with room under the 24,576-byte limit.
         assertLt(address(hook).code.length, 20_000, "deployed from the production profile");
@@ -62,6 +62,18 @@ contract DeployTest is Test {
         Deploy.Settings memory s = settings();
         s.expectedChainId = 99_901;
         vm.expectRevert(bytes("rehearsal only on testnet"));
+        d.check(s);
+    }
+
+    function test_mainnetRequiresTheOfficialPoolManager() public {
+        vm.chainId(99_901);
+        Deploy.Settings memory s = settings();
+        s.expectedChainId = 99_901;
+        s.rehearsal = false;
+        s.poolManager = 0x5fb015a49f5b35073f9Ce01C2aDb287A75F89600; // ElysPump's own PoolManager
+        vm.expectRevert(bytes("not the official Elysium PoolManager"));
+        d.check(s);
+        s.poolManager = 0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1;
         d.check(s);
     }
 
