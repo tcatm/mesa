@@ -23,7 +23,22 @@ jobs:
           submodules: recursive
       - uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1
       - run: forge fmt --check
-      - run: forge build --sizes
+      # Size limits apply to what we deploy: the default-profile build of src/.
+      # Foundry also compiles every contract under the PoolManager's test-only
+      # "v4" profile (names ending in .v4); those copies are never deployed.
+      - name: forge build, deployable contracts within EIP-170
+        run: |
+          forge build --sizes --json > sizes.json || true
+          python3 - <<'PY'
+          import json, pathlib, sys
+          sizes = json.load(open("sizes.json"))
+          ours = {p.stem for p in pathlib.Path("src").glob("*.sol")}
+          over = {n: v["runtime_size"] for n, v in sizes.items() if n in ours and v["runtime_size"] > 24576}
+          for n in sorted(ours & sizes.keys()):
+              print(f"{n:24} {sizes[n]['runtime_size']:>6} bytes")
+          if over:
+              sys.exit(f"over EIP-170: {over}")
+          PY
       - run: forge test -vv
 
   bridge:
