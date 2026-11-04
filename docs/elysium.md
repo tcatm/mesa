@@ -64,6 +64,25 @@ ElysPump also runs a **separate** PoolManager it deployed itself
 not use it; the deploy script refuses any PoolManager but the official one on
 chain 99901.
 
+## Running a node
+
+Conduit publishes Elysium's chain info for both networks, and the mainnet
+data availability endpoint serves batch data without a key, so anyone can run
+a mainnet node: see [node/](../node/README.md). Conduit's mainnet sequencer
+RPC needs a Conduit RPC key; its feed relay is a public websocket.
+
+| | Mainnet | Testnet |
+|---|---|---|
+| Chain info | `api.conduit.xyz/file/v1/arbitrum/chaininfo/elysium-mainnet` | `.../elysium-testnet` |
+| AnyTrust data | `das-elysium-mainnet.t.conduit.xyz` | `das-elysium-testnet.t.conduit.xyz` |
+| Feed | `wss://relay-elysium-mainnet.t.conduit.xyz/` | `wss://relay-elysium-testnet.t.conduit.xyz/` |
+| Sequencer RPC | `rpc-elysium-mainnet.t.conduit.xyz` (key required) | `rpc-elysium-testnet.t.conduit.xyz` |
+| Rollup deployed at | HyperEVM block 48,956,737 | HyperEVM testnet block 63,983,746 |
+| Initial ArbOS | 61 | 51 |
+
+Mainnet batches are AnyTrust certificates (178 bytes, header `0x88`), posted
+about every three hours before the public sequencer opens.
+
 ## Observed on chain (2026-11-04)
 
 Read from mainnet through BOXA's public RPC (`https://rpc.boxa.club`, which

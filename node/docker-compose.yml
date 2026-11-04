@@ -1,0 +1,39 @@
+# An Elysium mainnet node (Arbitrum Nitro), from public sources only:
+# Conduit's chain info (chaininfo-mainnet.json), Conduit's AnyTrust data
+# endpoint, Conduit's sequencer feed, and a HyperEVM RPC of your own.
+#
+#   PARENT_RPC=https://lb.drpc.live/hyperliquid/<key> docker compose up -d
+#
+# Serves http://127.0.0.1:8547 (and ws on 8548) once synced. Point the relay's
+# UPSTREAM_RPC at it.
+services:
+  elysium:
+    image: offchainlabs/nitro-node:v3.9.5-66e42c4
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8547:8547"
+      - "127.0.0.1:8548:8548"
+    volumes:
+      - ./data:/home/user/.arbitrum
+      - ./chaininfo-mainnet.json:/config/chaininfo.json:ro
+    command:
+      - --conf.file=/config/chaininfo.json
+      - --parent-chain.connection.url=${PARENT_RPC:?set PARENT_RPC to a HyperEVM RPC}
+      - --node.inbox-reader.max-blocks-to-read=1000
+      - --node.dangerous.disable-blob-reader
+      - --node.data-availability.enable
+      - --node.data-availability.rest-aggregator.enable
+      - --node.data-availability.rest-aggregator.urls=https://das-elysium-mainnet.t.conduit.xyz
+      - --node.feed.input.url=wss://relay-elysium-mainnet.t.conduit.xyz/
+      - --node.staker.enable=false
+      # No public sequencer RPC yet; transactions go through the relay.
+      - --execution.forwarding-target=null
+      - --http.addr=0.0.0.0
+      - --http.port=8547
+      - --http.api=net,web3,eth,arb
+      - --http.vhosts=*
+      - --http.corsdomain=*
+      - --ws.addr=0.0.0.0
+      - --ws.port=8548
+      - --ws.api=net,web3,eth
+      - --ws.origins=*

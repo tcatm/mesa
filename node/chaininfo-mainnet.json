@@ -1,0 +1,6 @@
+{
+	"chain": {
+		"info-json": "[{\"chain-id\":99901,\"parent-chain-id\":999,\"chain-name\":\"conduit-orbit-deployer\",\"chain-config\":{\"chainId\":99901,\"homesteadBlock\":0,\"daoForkBlock\":null,\"daoForkSupport\":true,\"eip150Block\":0,\"eip150Hash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"eip155Block\":0,\"eip158Block\":0,\"byzantiumBlock\":0,\"constantinopleBlock\":0,\"petersburgBlock\":0,\"istanbulBlock\":0,\"muirGlacierBlock\":0,\"berlinBlock\":0,\"londonBlock\":0,\"clique\":{\"period\":0,\"epoch\":0},\"arbitrum\":{\"EnableArbOS\":true,\"AllowDebugPrecompiles\":false,\"DataAvailabilityCommittee\":true,\"InitialArbOSVersion\":61,\"InitialChainOwner\":\"0xE7Cb019b9Ea946961207775F11cAc8e3dBF1cb8A\",\"GenesisBlockNum\":0}},\"rollup\":{\"bridge\":\"0x503D572157113fAaaD4DbeD2647Bb10b949216B6\",\"inbox\":\"0xce59f8B65ad41C9DAE4c07A0571a39824bD92cff\",\"sequencer-inbox\":\"0x7f3Ff53aecB87261206ad3bDc27A88b6D8420fa6\",\"rollup\":\"0x508C173dFe5F737B3493195Bf785d71fA76fD217\",\"validator-wallet-creator\":\"0x62EEB95bEd184922c6F93fD31e98130424aadC3E\",\"deployed-at\":48956737,\"stake-token\":\"0x5555555555555555555555555555555555555555\"},\"parent-chain-is-arbitrum\":false}]",
+		"name": "conduit-orbit-deployer"
+	}
+}
