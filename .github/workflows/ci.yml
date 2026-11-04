@@ -25,3 +25,13 @@ jobs:
       - run: forge fmt --check
       - run: forge build --sizes
       - run: forge test -vv
+
+  bridge:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bridge
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: npm ci
+      - run: npm run typecheck

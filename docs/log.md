@@ -72,3 +72,15 @@ buys, the snipe cap, claims, and conversion then buyback.
 
 **Learned from the chain.** Notes on BOXA, Flaunch and the official
 PoolManager's use are in [elysium.md](elysium.md).
+
+## 2026-11-04: bridge
+
+**Shipped.** `bridge/`, a TypeScript package on the Arbitrum SDK for HYPE
+deposits, withdrawals and claims through Elysium's official bridge, 1:1 with
+no fee, plus bridge-and-buy. `MesaBridgeRouter`, its target on Elysium: it buys
+a Mesa token for the recipient, or sends the HYPE to them if the buy fails, so
+a deposit that lands after the price moved is never stuck.
+
+**Checked live.** The package reads both networks' queues, and tracked a real
+mainnet deposit (sent through BOXA, which adds a 2% fee to the same official
+deposit) to "credited" when batch 267 landed.

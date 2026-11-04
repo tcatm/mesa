@@ -9,10 +9,11 @@ Foundry project. Uniswap v4-core v4.0.0 and forge-std are git submodules.
 | `src/BuybackBurner.sol` | Protocol fee recipient; buys $MESA and burns it |
 | `src/QuoteRegistry.sol` | ERC-20 quote assets new launches may use (3-day delay to add) |
 | `src/LaunchMath.sol` | The launch position, shared by the hook and the registry |
+| `src/MesaBridgeRouter.sol` | Target of bridge-and-buy deposits: buys a Mesa token, or refunds the HYPE |
 | `src/Create2Deployer.sol` | Places the hook at an address encoding its v4 permissions |
 
 ```bash
-forge test                 # 48 tests, each top-level call its own transaction
+forge test                 # 54 tests, each top-level call its own transaction
 forge build --sizes        # MesaHook must stay under 24,576 bytes
 ```
 

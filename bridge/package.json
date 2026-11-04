@@ -1,0 +1,24 @@
+{
+  "name": "@mesa/bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HYPE bridging between HyperEVM and Elysium through the official bridge, with no fee, plus bridge-and-buy.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit",
+    "cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@arbitrum/sdk": "4.1.0",
+    "ethers": "5.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.9.0",
+    "tsx": "4.19.2",
+    "typescript": "5.6.3"
+  }
+}
