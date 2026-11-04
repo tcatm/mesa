@@ -13,6 +13,7 @@ import { serve } from './api.js'
 import { networks } from './config.js'
 import { open } from './db.js'
 import { Indexer } from './indexer.js'
+import { MetadataWorker } from './metadata.js'
 
 const net = process.env.NETWORK ?? 'mainnet'
 const n = networks[net]
@@ -24,3 +25,4 @@ const rpc = new providers.StaticJsonRpcProvider(n.rpc, n.chainId)
 serve(db, n, Number(process.env.PORT ?? 8080))
 console.log(JSON.stringify({ api: Number(process.env.PORT ?? 8080), network: net, rpc: n.rpc.replace(/\/[^/]{20,}$/, '/…') }))
 void new Indexer(db, rpc, n).run()
+void new MetadataWorker(db, n.rpc).run()

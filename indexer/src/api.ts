@@ -27,6 +27,7 @@ const PX = `(CASE WHEN token_amount > 0 AND value_hype > 0 AND (price_hype IS NU
  *   GET /tokens/:address/candles?interval=<seconds>&limit=
  *   GET /tokens/:address/holders?limit=
  *   GET /venues
+ *   GET /wallets/:address   holdings and PnL
  *   GET /stats
  *   GET /stream            server-sent events: pool, trade
  *   GET /health
@@ -64,6 +65,7 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
        JOIN (SELECT token, MIN(block) b FROM pools GROUP BY token) f ON f.token = p.token AND f.b = p.block`,
     )
     const tokens = new Map(all('SELECT * FROM tokens').map((r) => [r.address, r]))
+    const images = new Map(all('SELECT token, image FROM token_meta WHERE image IS NOT NULL').map((r) => [r.token, r.image]))
     const lastHype = new Map(
       all(
         `SELECT token, price_hype FROM (SELECT token, ${PX} price_hype, ROW_NUMBER() OVER (PARTITION BY token ORDER BY block DESC, log_index DESC) rn FROM trades WHERE price_hype IS NOT NULL) WHERE rn = 1`,
@@ -120,6 +122,7 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
       const mcap = price !== null && supply !== null ? price * supply : null
       rows.push({
         address: a,
+        image: (images.get(a) as string | undefined) ?? null,
         name: tk?.name ?? null,
         symbol: tk?.symbol ?? null,
         venue: p.venue,
@@ -179,9 +182,16 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
       .slice(0, 20)
       .map((r) => ({ address: r.address, symbol: r.symbol, venue: r.venue, launchedAt: r.launchedAt, marketCapHype: r.marketCapHype }))
     const totals = one('SELECT COALESCE(SUM(value_hype), 0) v, COUNT(*) n FROM trades WHERE token = ?', address)
+    const meta = one('SELECT description, website, twitter, telegram FROM token_meta WHERE token = ?', address)
     return {
       ...row,
       pools,
+      links: {
+        description: meta?.description ?? null,
+        website: meta?.website ?? null,
+        twitter: meta?.twitter ?? null,
+        telegram: meta?.telegram ?? null,
+      },
       volumeAllTimeHype: totals?.v,
       tradesAllTime: totals?.n,
       mesa: mesa
@@ -233,6 +243,75 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
       prev = p
     }
     return out.slice(-limit)
+  }
+
+  /**
+   * A wallet's holdings and PnL, in HYPE. Cost basis is the average price of
+   * the wallet's own buys (by transaction sender, so trades made through any
+   * router count); tokens that arrived by transfer have no cost basis.
+   *   realized   = HYPE from sells - tokens sold x average buy price
+   *   unrealized = tokens held x (current price - average buy price)
+   */
+  function wallet(address: string) {
+    const byToken = new Map(table().map((r) => [r.address as string, r]))
+    const held = all('SELECT token, balance FROM balances WHERE holder = ? AND balance > 1e-9', address)
+    const flows = all(
+      `SELECT token,
+         SUM(CASE WHEN side = 'buy' THEN token_amount ELSE 0 END) bought,
+         SUM(CASE WHEN side = 'buy' THEN value_hype ELSE 0 END) spent,
+         SUM(CASE WHEN side = 'sell' THEN token_amount ELSE 0 END) sold,
+         SUM(CASE WHEN side = 'sell' THEN value_hype ELSE 0 END) received,
+         COUNT(*) trades, MIN(timestamp) first, MAX(timestamp) last
+       FROM trades WHERE trader = ? AND value_hype IS NOT NULL GROUP BY token`,
+      address,
+    )
+    const f = new Map(flows.map((r) => [r.token as string, r]))
+    const tokensSeen = new Set([...held.map((h) => h.token as string), ...flows.map((r) => r.token as string)])
+    const positions = [...tokensSeen]
+      .map((token) => {
+        const t = byToken.get(token)
+        if (!t) return null
+        const balance = (held.find((h) => h.token === token)?.balance as number) ?? 0
+        const fl = f.get(token)
+        const bought = (fl?.bought as number) ?? 0
+        const spent = (fl?.spent as number) ?? 0
+        const sold = (fl?.sold as number) ?? 0
+        const received = (fl?.received as number) ?? 0
+        const avg = bought > 0 ? spent / bought : null
+        const price = (t.priceHype as number | null) ?? null
+        const value = price !== null ? balance * price : null
+        return {
+          token,
+          symbol: t.symbol,
+          name: t.name,
+          image: t.image,
+          venue: t.venue,
+          balance,
+          priceHype: price,
+          valueHype: value,
+          change24h: t.change24h,
+          avgBuyPriceHype: avg,
+          spentHype: spent,
+          receivedHype: received,
+          realizedHype: avg !== null ? received - Math.min(sold, bought) * avg : null,
+          unrealizedHype: avg !== null && value !== null ? value - balance * avg : null,
+          trades: (fl?.trades as number) ?? 0,
+          lastTradeAt: (fl?.last as number) ?? null,
+        }
+      })
+      .filter((p): p is NonNullable<typeof p> => p !== null)
+      .sort((a, b) => (b.valueHype ?? 0) - (a.valueHype ?? 0))
+    const sum = (k: 'valueHype' | 'realizedHype' | 'unrealizedHype' | 'spentHype' | 'receivedHype') =>
+      positions.reduce((s, p) => s + (p[k] ?? 0), 0)
+    return {
+      address,
+      holdingsValueHype: sum('valueHype'),
+      realizedHype: sum('realizedHype'),
+      unrealizedHype: sum('unrealizedHype'),
+      spentHype: sum('spentHype'),
+      receivedHype: sum('receivedHype'),
+      positions,
+    }
   }
 
   function venues() {
@@ -294,6 +373,11 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
       if (parts[0] === 'health' || parts.length === 0) return json({ ok: true, ...stats() })
       if (parts[0] === 'stats') return json(stats())
       if (parts[0] === 'venues') return json(venues())
+      if (parts[0] === 'wallets' && parts[1] && parts.length === 2) {
+        const a = parts[1].toLowerCase()
+        if (!/^0x[0-9a-f]{40}$/.test(a)) return json({ error: 'bad address' }, 400)
+        return json(wallet(a))
+      }
       if (parts[0] === 'tokens' && parts.length === 1) {
         const search = (q.get('q') ?? '').toLowerCase().trim()
         const venue = q.get('venue')

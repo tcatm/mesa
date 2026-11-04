@@ -105,6 +105,19 @@ export function open(path: string): DatabaseSync {
       PRIMARY KEY (token, holder)
     );
     CREATE INDEX IF NOT EXISTS balances_token ON balances(token, balance);
+    CREATE INDEX IF NOT EXISTS balances_holder ON balances(holder);
+
+    -- What each launchpad published about a token at launch: image, links.
+    -- checked_at is set even when nothing was found, so a token is looked up once.
+    CREATE TABLE IF NOT EXISTS token_meta (
+      token TEXT PRIMARY KEY,
+      image TEXT,
+      description TEXT,
+      website TEXT,
+      twitter TEXT,
+      telegram TEXT,
+      checked_at INTEGER NOT NULL
+    );
 
     CREATE TABLE IF NOT EXISTS burns (
       tx TEXT NOT NULL,
