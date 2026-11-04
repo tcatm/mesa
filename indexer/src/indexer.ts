@@ -98,7 +98,8 @@ export class Indexer {
    * quiet one grows back.
    */
   async run(signal?: AbortSignal) {
-    let range = this.n.range
+    // Start small after a restart: the cursor may sit in a busy stretch.
+    let range = Math.min(this.n.range, 1_000)
     while (!signal?.aborted) {
       try {
         const head = await this.rpc.getBlockNumber()
