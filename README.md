@@ -25,6 +25,7 @@ the official PoolManager, with Mesa's hook attached:
 | [docs/design.md](docs/design.md) | What the contracts do, exactly |
 | [docs/fees.md](docs/fees.md) | Every fee, cap and default |
 | [docs/risks.md](docs/risks.md) | What can go wrong |
+| [docs/elysium.md](docs/elysium.md) | Chain facts and Uniswap addresses Mesa depends on, with sources |
 | [docs/log.md](docs/log.md) | Dev log |
 
 ## Layout
