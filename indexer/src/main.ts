@@ -1,28 +1,26 @@
 /**
- * Mesa indexer and terminal API.
+ * Mesa terminal indexer and API: every launchpad on Elysium's v4 PoolManagers.
  *
  * Env:
- *   NETWORK   testnet | mainnet (must be in config.ts)   default testnet
- *   RPC       Elysium RPC; defaults to the network's public one
- *   DB        SQLite file                                  default ./mesa-<network>.db
- *   PORT      API port                                     default 8080
- *   RANGE     blocks per getLogs request                   default 2000
+ *   NETWORK   mainnet | testnet                 default mainnet
+ *   RPC       Elysium RPC; defaults to the network's in config.ts
+ *   DB        SQLite file                       default ./terminal-<network>.db
+ *   PORT      API port                          default 8080
  */
 import { providers } from 'ethers'
 
 import { serve } from './api.js'
-import { deployments } from './config.js'
+import { networks } from './config.js'
 import { open } from './db.js'
 import { Indexer } from './indexer.js'
 
-const net = process.env.NETWORK ?? 'testnet'
-const d = deployments[net]
-if (!d) throw new Error(`no Mesa deployment configured for ${net}`)
+const net = process.env.NETWORK ?? 'mainnet'
+const n = networks[net]
+if (!n) throw new Error(`unknown network ${net}`)
+if (process.env.RPC) n.rpc = process.env.RPC
 
-const db = open(process.env.DB ?? `./mesa-${net}.db`)
-const rpc = new providers.StaticJsonRpcProvider(process.env.RPC ?? d.rpc, d.chainId)
-const port = Number(process.env.PORT ?? 8080)
-
-serve(db, d, port)
-console.log(JSON.stringify({ api: port, network: net }))
-void new Indexer(db, rpc, d, Number(process.env.RANGE ?? 2_000)).run()
+const db = open(process.env.DB ?? `./terminal-${net}.db`)
+const rpc = new providers.StaticJsonRpcProvider(n.rpc, n.chainId)
+serve(db, n, Number(process.env.PORT ?? 8080))
+console.log(JSON.stringify({ api: Number(process.env.PORT ?? 8080), network: net, rpc: n.rpc.replace(/\/[^/]{20,}$/, '/…') }))
+void new Indexer(db, rpc, n).run()
