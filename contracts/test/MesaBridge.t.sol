@@ -139,9 +139,8 @@ contract MesaBridgeTest is Test {
         proof[0] = bytes32(uint256(1));
         proof[1] = bytes32(uint256(2));
         b.claim(proof, 5, alice, alice, 10, 20, 30, 0.05 ether, "");
-        bytes memory expected = abi.encodeCall(
-            IOutbox.executeTransaction, (proof, 5, alice, alice, 10, 20, 30, 0.05 ether, bytes(""))
-        );
+        bytes memory expected =
+            abi.encodeCall(IOutbox.executeTransaction, (proof, 5, alice, alice, 10, 20, 30, 0.05 ether, bytes("")));
         assertEq(outbox.lastCall(), expected);
     }
 

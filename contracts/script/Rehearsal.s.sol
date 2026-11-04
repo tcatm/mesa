@@ -20,7 +20,8 @@ import {MesaBridgeRouter} from "../src/MesaBridgeRouter.sol";
 ///
 /// The broadcaster must be the hook's genesis launcher and the burner's keeper.
 contract Rehearsal is Script {
-    PoolSwapTest.TestSettings internal settings = PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
+    PoolSwapTest.TestSettings internal settings =
+        PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
 
     function run() external {
         require(block.chainid == 99_801 || block.chainid == 31_337, "rehearsal is testnet only");
@@ -38,9 +39,8 @@ contract Rehearsal is Script {
             MesaHook.LaunchParams("Mesa", "MESA", "ipfs://mesa-rehearsal", me, 100, 100, 1_500, 300, 100)
         );
         // 2. A second token, no fairness settings, 0.005 HYPE dev buy.
-        (address t2, PoolKey memory k) = hook.launch{value: 0.005 ether}(
-            MesaHook.LaunchParams("Rehearsal", "RHSL", "", me, 200, 200, 0, 0, 10_000)
-        );
+        (address t2, PoolKey memory k) =
+            hook.launch{value: 0.005 ether}(MesaHook.LaunchParams("Rehearsal", "RHSL", "", me, 200, 200, 0, 0, 10_000));
         MesaToken token = MesaToken(t2);
         token.approve(address(swapper), type(uint256).max);
 
