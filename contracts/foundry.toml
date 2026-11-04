@@ -1,0 +1,32 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.26"
+evm_version = "cancun"
+via_ir = true
+optimizer = true
+optimizer_runs = 1000
+bytecode_hash = "none"
+# Each top-level call in a test is its own transaction, as on chain. The
+# per-transaction buy cap depends on this (transient storage).
+isolate = true
+fs_permissions = [{ access = "read", path = "./out" }]
+
+# The PoolManager (used only in tests) needs Uniswap's own settings to compile.
+additional_compiler_profiles = [{ name = "v4", via_ir = true, optimizer_runs = 44444444 }]
+compilation_restrictions = [
+    { paths = "lib/v4-core/src/PoolManager.sol", optimizer_runs = 44444444 },
+]
+
+[profile.default.fuzz]
+runs = 512
+
+[fmt]
+line_length = 120
+
+[rpc_endpoints]
+elysium = "${ELYSIUM_RPC_URL}"
+elysium_testnet = "${ELYSIUM_TESTNET_RPC_URL}"
