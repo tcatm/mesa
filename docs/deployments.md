@@ -31,6 +31,29 @@ its pool (or burned launch dust), and the router held nothing.
 Cost: 0.00125 HYPE to deploy, 0.011 HYPE for the rehearsal (mostly the dev
 buys, whose $MESA is still held).
 
+## Bridge front doors
+
+Thin contracts in front of Elysium's official bridge, so explorers label
+Mesa bridge transactions "Bridge", "Withdraw" and "Claim" instead of
+"Create Retryable Ticket", "Withdraw Eth" and "Execute Transaction". Each call
+goes straight to the official contract in the same transaction; they hold
+nothing, have no owner and cannot be changed. Source: `contracts/src/MesaBridge.sol`,
+`contracts/src/MesaWithdraw.sol`.
+
+| | Mainnet | Testnet |
+|---|---|---|
+| MesaBridge (HyperEVM: `bridge`, `claim`) | `0xa401a02Bb588077CFd84e93Ffe3AE76A9dC78B28` (verified on HyperEVMScan) | `0x8afC68ccDaC444Fe8891B151DAbd9B97b387cF57` |
+| MesaWithdraw (Elysium: `withdraw`) | `0xe1d51502D5bc0d67f48df64A589e89663D0Ce59B` | `0x3819116D47aA22b9E597025D9a8106152900DEb7` |
+
+MesaBridge on mainnet was deployed by the relayer key; MesaWithdraw on
+mainnet by a fresh deployer (`0x107c2dE545e4E857F180CC820858aE73000690C4`),
+funded with a 0.002 HYPE deposit through MesaBridge and deployed through
+`Inbox.sendL2Message` before Elysium's public sequencer opened. Both
+arrived on Elysium within about a minute.
+
+MesaBridge's Outbox is fixed at deployment: if Elysium ever replaces its
+Outbox, deploy a new MesaBridge (or claim on the Outbox directly; anyone may).
+
 ## Elysium mainnet (99901)
 
-Not deployed.
+Mesa itself is not deployed.

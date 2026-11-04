@@ -44,8 +44,8 @@ services:
       UPSTREAM_RPC: http://elysium:8547
       PARENT_RPC: ${PARENT_RPC}
       RELAYER_KEY: ${RELAYER_KEY}
-      # Withdrawals only (ArbSys) until Mesa is on mainnet.
-      ALLOW_TO: "0x0000000000000000000000000000000000000064"
+      # Withdrawals only (ArbSys, and MesaWithdraw in front of it) until Mesa is on mainnet.
+      ALLOW_TO: "0x0000000000000000000000000000000000000064,0xe1d51502D5bc0d67f48df64A589e89663D0Ce59B"
       PORT: "8545"
 
   indexer:
