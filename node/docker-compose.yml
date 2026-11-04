@@ -8,7 +8,7 @@
 # UPSTREAM_RPC at it.
 services:
   elysium:
-    image: offchainlabs/nitro-node:v3.9.5-66e42c4
+    image: offchainlabs/nitro-node:v3.12.2-5f02f3f
     restart: unless-stopped
     ports:
       - "127.0.0.1:8547:8547"

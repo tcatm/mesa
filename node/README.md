@@ -11,7 +11,7 @@ data availability committee. Everything a node needs is public:
 | Batch data | `https://das-elysium-mainnet.t.conduit.xyz` (checked: it serves the latest batch's data without a key) |
 | Live blocks | Conduit's sequencer feed, `wss://relay-elysium-mainnet.t.conduit.xyz/` |
 | HyperEVM | your own RPC (a dRPC key works) |
-| Software | stock Arbitrum Nitro `v3.9.5`, the version Hypedexer documents for Elysium testnet |
+| Software | stock Arbitrum Nitro `v3.12.2`. Mainnet needs it: `v3.9.5`, the version documented for testnet, stops with "unsupported ArbOS version 52" |
 
 The feed gives the node blocks as the sequencer makes them, ahead of the
 batch that confirms them; without it, the node follows batches only (every
@@ -27,5 +27,5 @@ Host: a VPS with 4+ cores, 16 GB RAM and a few hundred GB of NVMe, which is
 more than a Render web service offers. The relay can run on the same machine
 or on Render with `UPSTREAM_RPC` pointing here.
 
-Not yet run end to end: the sandbox this was written in cannot reach Docker
-Hub. The first run on the server is the test.
+If a start fails and leaves a partial database behind, Nitro refuses to start
+again with "unexpected files in database directory": empty `data/` first.
