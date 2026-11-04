@@ -1,0 +1,21 @@
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+
+# Node
+node_modules/
+dist/
+.next/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/*
