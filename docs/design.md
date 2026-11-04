@@ -11,10 +11,14 @@ the contracts do, exactly. The fee and parameter tables are in
 |---|---|
 | `MesaHook` | The launcher and the hook of every Mesa pool. Holds all launch liquidity. |
 | `MesaToken` | The token each launch deploys. Fixed supply of 1,000,000,000, no owner, no mint, no burn, no pause, no transfer tax. |
-| `BuybackBurner` | Receives the protocol share of fees. Can only buy $MESA and burn it. Deployed by `MesaHook`'s constructor, so the pairing cannot be forged. |
+| `BuybackBurner` | Receives the protocol share of fees. Can only buy $MESA and burn it, after converting fees in other quotes to HYPE. Deployed by `MesaHook`'s constructor, so the pairing cannot be forged. |
+| `QuoteRegistry` | Which ERC-20 quote assets new launches may pair against. Deployed by `MesaHook`'s constructor. |
 | `Create2Deployer` | Places the hook at an address whose low bits encode its v4 permissions. |
 
 None of them is upgradeable. `MesaHook` has no owner and no admin function.
+Besides the buyback keeper and owner (below), the only role with a say over
+launches is the `QuoteRegistry` admin, described under
+[Quote assets](#quote-assets); it cannot touch existing pools or fees.
 
 ## A launch
 
@@ -25,40 +29,42 @@ token `BuybackBurner` can ever buy.
 `MesaHook.launch(params)`, in one transaction:
 
 1. Deploys a `MesaToken` and mints the full supply to the hook.
-2. Creates the pool `HYPE / token` on the PoolManager (native HYPE is
-   `currency0`), LP fee 0, tick spacing 200, hook = `MesaHook`.
-3. Puts the entire supply into one position from the lowest usable tick up to
-   the starting tick. The position is owned by the hook and can never be
+2. Creates the pool of the token against its quote (native HYPE, or an
+   enabled ERC-20 quote) on the PoolManager, LP fee 0, tick spacing 200,
+   hook = `MesaHook`.
+3. Puts the entire supply into one one-sided position between the starting
+   price and the end of the price range on the token's side. The position is owned by the hook and can never be
    removed. Rounding dust (a fraction of one token) is sent to `0x…dEaD`.
-4. If HYPE was sent with the call, executes the creator's **declared dev buy**
+4. If a dev buy was sent with the call (HYPE as `msg.value`, or an ERC-20
+   quote pulled from the caller), executes the creator's **declared dev buy**
    at the starting price, charges the normal buy fee on it, and sends the
    tokens to the caller. A dev buy above 10% of supply reverts.
 
-The starting price is the same for every launch and is fixed at deployment
-(`initialTick`). The default, tick 173,200, starts every token at a market cap
+The starting price of native HYPE launches is fixed at deployment
+(`initialTick`); each ERC-20 quote has its own, set in the registry. The default, tick 173,200, starts every token at a market cap
 of about 30 HYPE. It behaves like a constant-product curve with a virtual
 reserve of 30 HYPE against 1B tokens: roughly 30 HYPE buys half the supply,
 and each further share costs more, without limit, so the pool never runs out.
 
 ## Fees
 
-Every swap pays a fee on its HYPE side, always as the same share of the gross
-HYPE amount (what a buyer pays in, or what the pool pays out to a seller),
-whichever way the swap is specified:
+Every swap pays a fee on its quote side (HYPE, or the pool's ERC-20 quote),
+always as the same share of the gross quote amount (what a buyer pays in, or
+what the pool pays out to a seller), whichever way the swap is specified:
 
-| Swap | HYPE is | Fee is taken |
+| Swap | Quote is | Fee is taken |
 |---|---|---|
 | Buy, exact input | the input | from the input, before the swap |
 | Sell, exact output | the output | added to the swap, before it |
 | Buy, exact output | the input | added to what the buyer pays, after the swap |
 | Sell, exact input | the output | from the output, after the swap |
 
-A swap with a price limit that would fill only part of a HYPE-specified
+A swap with a price limit that would fill only part of a quote-specified
 amount reverts, rather than charging a fee on input that never traded. Use a
 minimum-output check for slippage protection instead; standard routers do.
 
-Fees are held in the PoolManager as ERC-6909 claims of native HYPE owned by
-the hook, and credited to `accrued[address]`:
+Fees are held in the PoolManager as ERC-6909 claims of the quote, owned by
+the hook, and credited to `accruedOf[quote][address]`:
 
 - **Base fee** (per-launch buy and sell rates): `creatorShareBps` to the
   token's fee recipient, the rest to `BuybackBurner`.
@@ -66,9 +72,11 @@ the hook, and credited to `accrued[address]`:
   own launch from another wallet pays the full surcharge and gets none of it
   back.
 
-Anyone with a balance in `accrued` withdraws it with `claim()`. A token's fee
-recipient can hand over to a new address with `setFeeRecipient`; fees already
-accrued stay with the old one.
+Anyone with a balance withdraws it with `claim()` (HYPE) or `claim(quote)`.
+`previewFees(token, amount, isBuy)` returns what a trade would pay right now
+and where it would go. A token's fee recipient hands over in two steps:
+`setFeeRecipient` proposes, and the new address must `acceptFeeRecipient`, so
+a typo cannot strand the fees. Fees already accrued stay with the old one.
 
 ## Fairness kit
 
@@ -96,10 +104,35 @@ deployer history), not prevented on chain.
 | Remove liquidity | no one | `beforeRemoveLiquidity` always reverts |
 | Donate to a pool | no one | `beforeDonate` reverts (donations would be stuck forever) |
 
+## Quote assets
+
+Native HYPE is always a valid quote. ERC-20 quotes are listed in
+`QuoteRegistry`, each with a starting tick (tokens per quote, so a launch
+opens at a sensible value whatever it pairs with) and a route: a HYPE/quote
+pool the protocol's fees in that quote are sold through.
+
+| Action | Who | When |
+|---|---|---|
+| Propose a quote, or new settings for one | admin | any time; replaces a pending proposal |
+| Activate a proposal | anyone | 3 days after the proposal |
+| Cancel a pending proposal | admin | before it is activated |
+| Disable a quote | admin | immediately; only stops new launches |
+| Hand over the admin role | admin, then the new admin accepts | any time |
+| Renounce | admin | any time; no quote can be added again |
+
+The registry checks that a quote is a contract, that its starting tick is
+valid on either side of a pool (a launched token's address can sort above or
+below the quote's), and that the route pairs HYPE with that quote. It cannot
+check that a quote is a plain ERC-20: no transfer fee, no rebasing, no
+blocklist. That is what the 3-day delay is for. A dev buy whose quote arrives
+short reverts. $MESA itself must launch against native HYPE.
+
 ## Buyback and burn
 
 `BuybackBurner` collects the protocol share with `collect()` (anyone may call)
-and its keeper runs `buyback(hypeIn, minMesaOut)`: a swap of HYPE into $MESA
+(`collect(quote)` for an ERC-20 quote). Its keeper sells ERC-20 fees for
+HYPE through the registry's route with `convert(quote, amountIn,
+minHypeOut)`, and runs `buyback(hypeIn, minMesaOut)`: a swap of HYPE into $MESA
 in $MESA's Mesa pool, with the output sent straight to `0x…dEaD`. It has no
 withdraw function. The keeper chooses timing, size (capped by `maxPerCall`)
 and minimum output; it cannot choose where the HYPE goes or which token is

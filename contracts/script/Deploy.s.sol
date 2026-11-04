@@ -25,6 +25,8 @@ import {HookMiner} from "./HookMiner.sol";
 ///   MESA_GENESIS_LAUNCHER the only address that can make launch #1 ($MESA)
 ///   MESA_OWNER            BuybackBurner owner (sets the keeper; can renounce)
 ///   MESA_KEEPER           BuybackBurner keeper (runs buybacks)
+///   MESA_QUOTE_ADMIN      governs the ERC-20 quote registry (timelocked adds,
+///                         instant disables); 0x0 for HYPE-only, for good
 /// Optional env (defaults):
 ///   CREATOR_SHARE_BPS     7000       share of base fees to a token's fee recipient
 ///   INITIAL_TICK          173200     starting market cap: about 30 HYPE
@@ -58,6 +60,7 @@ contract Deploy is Script {
         address owner;
         address keeper;
         uint256 maxPerCall;
+        address quoteAdmin;
     }
 
     function run() external returns (MesaHook, BuybackBurner, IPoolManager) {
@@ -71,7 +74,8 @@ contract Deploy is Script {
                 genesis: vm.envAddress("MESA_GENESIS_LAUNCHER"),
                 owner: vm.envAddress("MESA_OWNER"),
                 keeper: vm.envAddress("MESA_KEEPER"),
-                maxPerCall: vm.envOr("BUYBACK_MAX_PER_CALL", uint256(10 ether))
+                maxPerCall: vm.envOr("BUYBACK_MAX_PER_CALL", uint256(10 ether)),
+                quoteAdmin: vm.envAddress("MESA_QUOTE_ADMIN")
             })
         );
     }
@@ -104,7 +108,14 @@ contract Deploy is Script {
         bytes memory initCode = abi.encodePacked(
             type(MesaHook).creationCode,
             abi.encode(
-                manager, uint16(s.creatorShareBps), int24(s.initialTick), s.genesis, s.owner, s.keeper, s.maxPerCall
+                manager,
+                uint16(s.creatorShareBps),
+                int24(s.initialTick),
+                s.genesis,
+                s.owner,
+                s.keeper,
+                s.maxPerCall,
+                s.quoteAdmin
             )
         );
         (address expected, bytes32 salt) = HookMiner.find(address(factory), FLAGS, initCode);

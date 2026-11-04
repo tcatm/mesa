@@ -17,6 +17,7 @@ import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {FullMath} from "v4-core/src/libraries/FullMath.sol";
 
 import {MesaHook} from "../src/MesaHook.sol";
+import {LaunchMath} from "../src/LaunchMath.sol";
 import {MesaToken} from "../src/MesaToken.sol";
 import {BuybackBurner} from "../src/BuybackBurner.sol";
 import {MultiSwapper, ReentrantRecipient} from "./utils/Helpers.sol";
@@ -46,6 +47,7 @@ contract MesaHookTest is Test, Deployers {
     address bob = makeAddr("bob");
     address owner = makeAddr("owner");
     address keeper = makeAddr("keeper");
+    address quoteAdmin = makeAddr("quoteAdmin");
 
     /// Every address fees can accrue to in these tests.
     address[] payees;
@@ -56,7 +58,7 @@ contract MesaHookTest is Test, Deployers {
         address at = address(FLAGS | (salt << 144));
         deployCodeTo(
             "MesaHook.sol:MesaHook",
-            abi.encode(manager, CREATOR_SHARE, INITIAL_TICK, genesis, owner, keeper, 10 ether),
+            abi.encode(manager, CREATOR_SHARE, INITIAL_TICK, genesis, owner, keeper, 10 ether, quoteAdmin),
             at
         );
         h = MesaHook(at);
@@ -224,8 +226,8 @@ contract MesaHookTest is Test, Deployers {
     }
 
     function test_constructorRejectsAStartingPriceThatCannotHoldTheSupply() public {
-        vm.expectRevert(abi.encodeWithSelector(MesaHook.InvalidParams.selector, "initialTick"));
-        new MesaHook(manager, CREATOR_SHARE, -400_000, genesis, owner, keeper, 10 ether);
+        vm.expectRevert(LaunchMath.BadStartTick.selector);
+        new MesaHook(manager, CREATOR_SHARE, -400_000, genesis, owner, keeper, 10 ether, quoteAdmin);
     }
 
     function test_startingMarketCapIsAbout30Hype() public {
@@ -455,6 +457,13 @@ contract MesaHookTest is Test, Deployers {
         hook.setFeeRecipient(address(t), bob);
         vm.prank(feeTo);
         hook.setFeeRecipient(address(t), bob);
+        // Not handed over until the new recipient accepts.
+        vm.expectRevert(MesaHook.NotFeeRecipient.selector);
+        hook.acceptFeeRecipient(address(t));
+        buyExactIn(alice, k, 1 ether);
+        assertEq(hook.accrued(feeTo), 0.007 ether);
+        vm.prank(bob);
+        hook.acceptFeeRecipient(address(t));
         buyExactIn(alice, k, 1 ether);
         assertEq(hook.accrued(bob), 0.007 ether);
         assertSolvent();

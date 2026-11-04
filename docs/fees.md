@@ -7,8 +7,8 @@ value, the contract rejects anything outside the range shown.
 
 | Parameter | Range | Meaning |
 |---|---|---|
-| Buy fee | 1% to 10% | Fee on the HYPE side of buys |
-| Sell fee | 1% to 10% | Fee on the HYPE side of sells |
+| Buy fee | 1% to 10% | Fee on the quote side (HYPE or the ERC-20 quote) of buys |
+| Sell fee | 1% to 10% | Fee on the quote side of sells |
 | Sniper surcharge | 0% to 30% | Extra fee on buys at launch, decaying linearly to 0 |
 | Snipe window | 0 to 15 minutes | How long the surcharge and the max-buy cap last |
 | Max buy per transaction | 0.1% to 100% of supply | Cap on tokens bought in one transaction during the snipe window |
@@ -19,12 +19,13 @@ value, the contract rejects anything outside the range shown.
 | Value | Default | Meaning |
 |---|---|---|
 | Creator share | 70% | Share of the base fee to the token's fee recipient. The rest buys and burns $MESA. |
-| Starting price | tick 173,200 | A market cap of about 30 HYPE (30 HYPE of virtual reserve against 1B tokens) |
+| Starting price, HYPE launches | tick 173,200 | A market cap of about 30 HYPE (30 HYPE of virtual reserve against 1B tokens) |
+| Starting price, ERC-20 quotes | per quote | Set in `QuoteRegistry`, behind a 3-day delay |
 | Supply | 1,000,000,000 | Every token, all of it in the pool at launch |
 | LP fee | 0 | Mesa fees replace the pool's LP fee |
 | Buyback per call | 10 HYPE | Largest single buyback |
 
-Every fee is a share of the **gross** HYPE amount: what a buyer pays in, or
+Every fee is a share of the **gross** quote amount, paid in the quote: what a buyer pays in, or
 what the pool pays out to a seller before the fee.
 
 ## Where a fee goes
@@ -33,6 +34,9 @@ what the pool pays out to a seller before the fee.
 |---|---|---|
 | Base fee | 70% | 30% |
 | Sniper surcharge | 0% | 100% |
+
+Fees in an ERC-20 quote go to the creator in that quote. The protocol's share
+is sold for HYPE through the quote's registered route, then spent on $MESA.
 
 ## Example
 

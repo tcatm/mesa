@@ -9,9 +9,14 @@ What can go wrong, stated plainly.
   pool.
 - Take anyone's fees. Accrued fees can only be claimed by the address they
   accrued to.
-- Change fees, caps or the creator share after deployment. There is no admin
-  and no upgrade.
+- Change fees, caps or the creator share after deployment. Nothing is
+  upgradeable.
 - Mint tokens. Every Mesa token has a fixed supply and no owner.
+
+Besides the buyback keeper, the only role with a say over launches is the
+`QuoteRegistry` admin, and it can only decide which
+ERC-20 quotes *new* launches may use. It cannot touch an existing pool, its
+fees, its claims or its tokens.
 
 ## What can still go wrong
 
@@ -42,6 +47,20 @@ malicious keeper could run a buyback at a bad price, for example by
 sandwiching it, and take value from the burn. It cannot send the HYPE
 anywhere else or buy any token but $MESA, and each buyback is capped in
 size.
+
+**Quote registry admin.** A careless or stolen admin key could list a bad
+quote: a token with a transfer fee, a blocklist, or no value. Listing takes 3
+days after a public `QuoteProposed` event, so it can be spotted, and Mesa's
+interface flags quotes younger than that. It cannot affect pools that already
+exist. The admin can renounce, after which the quote list is fixed.
+
+**Pools quoted in an ERC-20 inherit that token's risks.** If the quote loses
+value, so does everything priced in it. If its issuer can freeze balances,
+they could freeze the PoolManager's, and with it every pool in that quote.
+
+**Fee conversion.** The keeper chooses when and at what minimum price
+protocol fees in an ERC-20 quote are sold for HYPE, the same trust as for
+buybacks. The proceeds can only stay in the buyback contract.
 
 **Price limits.** A swap whose price limit would stop it partway reverts. Use
 a minimum-output check for slippage protection instead.

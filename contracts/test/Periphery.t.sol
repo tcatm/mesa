@@ -70,7 +70,9 @@ contract PeripheryTest is Test, Deployers {
         address at = address(FLAGS | (uint160(0x4444) << 144));
         deployCodeTo(
             "out/MesaHook.sol/MesaHook.json",
-            abi.encode(manager, uint16(7_000), int24(173_200), genesis, makeAddr("o"), makeAddr("k"), 10 ether),
+            abi.encode(
+                manager, uint16(7_000), int24(173_200), genesis, makeAddr("o"), makeAddr("k"), 10 ether, makeAddr("qa")
+            ),
             at
         );
         hook = MesaHook(at);

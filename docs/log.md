@@ -50,3 +50,25 @@ across transactions; the buyback keeper is trusted on price.
 does not rebase. Elysium mainnet is chain 99901 and testnet 99801 (dRPC's
 chain config). The PoolManager address is pinned in the deploy script for
 mainnet; see [elysium.md](elysium.md).
+
+## 2026-11-04: quote assets
+
+**Shipped.** Launches can pair against ERC-20 quote assets as well as native
+HYPE. `QuoteRegistry` lists them, each with a starting tick and a route to
+HYPE; adding one takes a public 3-day delay, disabling one is immediate and
+only stops new launches. The hook handles the quote on either side of the
+pool, takes fees in the quote, accepts dev buys in it, and pays claims in it.
+`BuybackBurner` converts protocol fees in a quote to HYPE through the route,
+then buys and burns $MESA as before. Also: `previewFees`, and a two-step fee
+recipient handover.
+
+**Why a separate registry.** It keeps the one admin role in a small contract
+of its own, and it kept `MesaHook` under the 24,576-byte limit (22,439 bytes
+at 500 optimizer runs).
+
+**Tested.** 48 tests, 12 of them new: the registry's delay and gating, every
+swap kind with the quote on either side (fuzzed over fees and sizes), dev
+buys, the snipe cap, claims, and conversion then buyback.
+
+**Learned from the chain.** Notes on BOXA, Flaunch and the official
+PoolManager's use are in [elysium.md](elysium.md).

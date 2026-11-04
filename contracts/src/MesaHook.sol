@@ -7,17 +7,19 @@ import {IUnlockCallback} from "v4-core/src/interfaces/callback/IUnlockCallback.s
 import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "v4-core/src/libraries/FullMath.sol";
-import {FixedPoint96} from "v4-core/src/libraries/FixedPoint96.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary, toBeforeSwapDelta} from "v4-core/src/types/BeforeSwapDelta.sol";
-import {Pool} from "v4-core/src/libraries/Pool.sol";
 import {SafeCast} from "v4-core/src/libraries/SafeCast.sol";
+import {ERC20} from "solmate/src/tokens/ERC20.sol";
+import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 
 import {MesaToken} from "./MesaToken.sol";
 import {BuybackBurner} from "./BuybackBurner.sol";
+import {QuoteRegistry} from "./QuoteRegistry.sol";
+import {LaunchMath} from "./LaunchMath.sol";
 
 /// @title MesaHook
 /// @notice Launches tokens on the official Uniswap v4 PoolManager and is the
@@ -25,9 +27,10 @@ import {BuybackBurner} from "./BuybackBurner.sol";
 ///
 /// Each launch:
 ///  - deploys a fixed-supply MesaToken (no owner, no mint);
-///  - creates a HYPE/token pool with this contract as hook, at a fixed starting
-///    price, and puts the entire supply into one one-sided position owned by
-///    this contract;
+///  - creates a pool of the token against its quote asset (native HYPE by
+///    default, or an ERC-20 the quote registry has enabled), with this
+///    contract as hook, at the quote's fixed starting price, and puts the
+///    entire supply into one one-sided position owned by this contract;
 ///  - optionally executes the creator's declared dev buy in the same
 ///    transaction, capped at `MAX_DEV_BUY_BPS` of supply.
 ///
@@ -35,25 +38,33 @@ import {BuybackBurner} from "./BuybackBurner.sol";
 ///  - Liquidity is locked forever: no one can remove it, this contract
 ///    included. Only this contract can add liquidity, and only at launch.
 ///  - Only this contract can create pools that use it as hook.
-///  - Fees are charged on the HYPE side of every trade, within hard caps, and
-///    split between the token's fee recipient and the protocol at a ratio
+///  - Fees are charged on the quote side of every trade, within hard caps,
+///    and split between the token's fee recipient and the protocol at a ratio
 ///    fixed at deployment. The sniper surcharge goes entirely to the protocol,
 ///    so a creator gains nothing by sniping their own launch.
-///  - Every swap kind pays the same share of its gross HYPE amount. Swaps
+///  - Every swap kind pays the same share of its gross quote amount. Swaps
 ///    that would fill only partially (because of a price limit) revert
 ///    instead of paying fees on input that never traded.
-///  - Nothing here is upgradeable and there is no admin. Accrued fees can only
-///    be claimed by the address they accrued to.
-///  - The first launch can only be made by `genesisLauncher`; it is $MESA, and
-///    the protocol's buyback contract can only ever buy that token.
+///  - Nothing here is upgradeable. Accrued fees can only be claimed by the
+///    address they accrued to.
+///  - The first launch can only be made by `genesisLauncher`, against native
+///    HYPE; it is $MESA, and the protocol's buyback contract can only ever buy
+///    that token.
+///
+/// ERC-20 quote assets come from `quoteRegistry`, deployed by this
+/// constructor. Its admin, the only privileged role in Mesa, decides which
+/// quotes new launches may use (adding one takes a public delay). It cannot
+/// touch existing pools, their fees, claims or tokens.
 contract MesaHook is IHooks, IUnlockCallback {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
+    using SafeTransferLib for ERC20;
 
     // ------------------------------------------------------------- constants
 
     uint256 internal constant BPS = 10_000;
-    int24 public constant TICK_SPACING = 200;
+    int24 public constant TICK_SPACING = LaunchMath.TICK_SPACING;
+    uint256 internal constant SUPPLY = LaunchMath.SUPPLY;
 
     /// @notice Base trading fee bounds per side.
     uint16 public constant MIN_FEE_BPS = 100;
@@ -66,12 +77,12 @@ contract MesaHook is IHooks, IUnlockCallback {
     /// @notice Dev buy cap, as share of supply.
     uint16 public constant MAX_DEV_BUY_BPS = 1_000;
 
-    uint256 internal constant NATIVE_ID = 0; // ERC-6909 id of native HYPE in the PoolManager
     uint256 internal constant WAD = 1e18;
     /// @dev Transient-storage namespaces, keyed by pool id.
     bytes32 internal constant T_FEE = keccak256("mesa.swap.fee");
     bytes32 internal constant T_BOUGHT = keccak256("mesa.tx.bought");
     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
+    address internal constant NATIVE = address(0);
 
     // ------------------------------------------------------------- immutables
 
@@ -83,8 +94,11 @@ contract MesaHook is IHooks, IUnlockCallback {
     address public immutable genesisLauncher;
     /// @notice Share of the base fee that goes to a token's fee recipient.
     uint16 public immutable creatorShareBps;
-    /// @notice Starting tick of every pool: price in tokens per HYPE.
+    /// @notice Starting tick of native HYPE pools, as the price in tokens per
+    /// HYPE.
     int24 public immutable initialTick;
+    /// @notice Which ERC-20 quote assets new launches may use.
+    QuoteRegistry public immutable quoteRegistry;
 
     // ------------------------------------------------------------- state
 
@@ -93,20 +107,24 @@ contract MesaHook is IHooks, IUnlockCallback {
         string symbol;
         /// Off-chain metadata (image, links), emitted only.
         string metadataURI;
-        /// Receives the creator share of fees. Can be changed later by itself.
+        /// Receives the creator share of fees. Can be handed over later.
         address feeRecipient;
         uint16 buyFeeBps;
         uint16 sellFeeBps;
         /// Surcharge on buys at launch, decaying linearly to zero over `snipeSeconds`.
         uint16 sniperFeeBps;
         uint32 snipeSeconds;
-        /// Max share of supply one swap may buy during `snipeSeconds`. 10_000 = no cap.
+        /// Max share of supply one transaction may buy during `snipeSeconds`. 10_000 = no cap.
         uint16 maxBuyBps;
     }
 
     struct PoolConfig {
         address token;
         address feeRecipient;
+        /// Quote asset; address(0) is native HYPE.
+        address quote;
+        /// Whether the quote is currency0 of the pool.
+        bool quoteIs0;
         uint16 buyFeeBps;
         uint16 sellFeeBps;
         uint16 sniperFeeBps;
@@ -120,9 +138,10 @@ contract MesaHook is IHooks, IUnlockCallback {
 
     mapping(PoolId => PoolConfig) public pools;
     mapping(address token => PoolId) public poolOf;
-    /// @notice Claimable native HYPE per address, backed by this contract's
-    /// ERC-6909 balance in the PoolManager.
-    mapping(address => uint256) public accrued;
+    mapping(PoolId => address) public pendingFeeRecipient;
+    /// @notice Claimable fees per quote asset and address, backed by this
+    /// contract's ERC-6909 balances in the PoolManager.
+    mapping(address quote => mapping(address => uint256)) public accruedOf;
 
     enum Action {
         Launch,
@@ -135,6 +154,7 @@ contract MesaHook is IHooks, IUnlockCallback {
         address indexed token,
         PoolId indexed poolId,
         address indexed creator,
+        address quote,
         address feeRecipient,
         string name,
         string symbol,
@@ -144,12 +164,13 @@ contract MesaHook is IHooks, IUnlockCallback {
         uint16 sniperFeeBps,
         uint32 snipeSeconds,
         uint16 maxBuyBps,
-        uint256 devBuyHype,
+        uint256 devBuyQuote,
         uint256 devBuyTokens
     );
     event FeesTaken(PoolId indexed poolId, bool buy, uint256 baseFee, uint256 sniperFee);
+    event FeeRecipientProposed(PoolId indexed poolId, address next);
     event FeeRecipientChanged(PoolId indexed poolId, address previous, address next);
-    event Claimed(address indexed recipient, uint256 amount);
+    event Claimed(address indexed recipient, address indexed quote, uint256 amount);
 
     // ------------------------------------------------------------- errors
 
@@ -173,6 +194,7 @@ contract MesaHook is IHooks, IUnlockCallback {
     /// @param burnerOwner Owner of the buyback contract (can only set its keeper).
     /// @param burnerKeeper Keeper of the buyback contract (runs buybacks).
     /// @param buybackMaxPerCall Largest single buyback, in HYPE.
+    /// @param quoteAdmin_ Governs the ERC-20 quote registry; address(0) for none.
     constructor(
         IPoolManager poolManager_,
         uint16 creatorShareBps_,
@@ -180,26 +202,19 @@ contract MesaHook is IHooks, IUnlockCallback {
         address genesisLauncher_,
         address burnerOwner,
         address burnerKeeper,
-        uint256 buybackMaxPerCall
+        uint256 buybackMaxPerCall,
+        address quoteAdmin_
     ) {
         if (creatorShareBps_ > BPS) revert InvalidParams("creatorShareBps");
         if (genesisLauncher_ == address(0)) revert InvalidParams("genesisLauncher");
-        if (
-            initialTick_ % TICK_SPACING != 0 || initialTick_ <= TickMath.minUsableTick(TICK_SPACING)
-                || initialTick_ >= TickMath.maxUsableTick(TICK_SPACING)
-        ) revert InvalidParams("initialTick");
-        // The whole supply must fit one position, or every launch would revert.
-        uint256 liquidity = _liquidityForAmount1(
-            TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(TICK_SPACING)),
-            TickMath.getSqrtPriceAtTick(initialTick_),
-            1_000_000_000e18
-        );
-        if (liquidity > Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING)) revert InvalidParams("initialTick");
+        // Native HYPE is always currency0, so only that orientation matters here.
+        LaunchMath.checkStartTick(initialTick_, true);
 
         poolManager = poolManager_;
         creatorShareBps = creatorShareBps_;
         initialTick = initialTick_;
         genesisLauncher = genesisLauncher_;
+        quoteRegistry = new QuoteRegistry(quoteAdmin_);
         protocolRecipient =
             address(new BuybackBurner(poolManager_, address(this), buybackMaxPerCall, burnerOwner, burnerKeeper));
         Hooks.validateHookPermissions(IHooks(address(this)), permissions());
@@ -248,27 +263,47 @@ contract MesaHook is IHooks, IUnlockCallback {
 
     // ------------------------------------------------------------- launch
 
-    /// @notice Launch a token. `msg.value`, if any, is the declared dev buy,
-    /// executed at the starting price; the tokens go to `msg.sender`.
-    function launch(LaunchParams calldata p) external payable nonReentrant returns (address token, PoolKey memory key) {
+    /// @notice Launch a token against native HYPE. `msg.value`, if any, is the
+    /// declared dev buy, executed at the starting price; the tokens go to
+    /// `msg.sender`.
+    function launch(LaunchParams calldata p) external payable nonReentrant returns (address, PoolKey memory) {
+        return _launch(p, NATIVE, msg.value);
+    }
+
+    /// @notice Launch a token against `quote` (address(0) = native HYPE).
+    /// `devBuy` is the declared dev buy in the quote: sent as `msg.value` for
+    /// native HYPE, or pulled from `msg.sender` (approve this contract first).
+    function launchWithQuote(LaunchParams calldata p, address quote, uint256 devBuy)
+        external
+        payable
+        nonReentrant
+        returns (address, PoolKey memory)
+    {
+        if (msg.value != (quote == NATIVE ? devBuy : 0)) revert InvalidParams("msg.value");
+        return _launch(p, quote, devBuy);
+    }
+
+    function _launch(LaunchParams calldata p, address quote, uint256 devBuy)
+        internal
+        returns (address token, PoolKey memory key)
+    {
         _validate(p);
+        int24 startTick = initialTick;
+        if (quote != NATIVE) startTick = quoteRegistry.startTickOf(quote);
 
         token = address(new MesaToken(p.name, p.symbol, address(this)));
         if (genesisToken == address(0)) {
-            if (msg.sender != genesisLauncher) revert GenesisFirst();
+            if (msg.sender != genesisLauncher || quote != NATIVE) revert GenesisFirst();
             genesisToken = token;
         }
-        key = PoolKey({
-            currency0: CurrencyLibrary.ADDRESS_ZERO,
-            currency1: Currency.wrap(token),
-            fee: 0,
-            tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(this))
-        });
+        bool quoteIs0 = quote < token;
+        key = _key(token, quote, quoteIs0);
         PoolId id = key.toId();
         pools[id] = PoolConfig({
             token: token,
             feeRecipient: p.feeRecipient,
+            quote: quote,
+            quoteIs0: quoteIs0,
             buyFeeBps: p.buyFeeBps,
             sellFeeBps: p.sellFeeBps,
             sniperFeeBps: p.sniperFeeBps,
@@ -278,14 +313,23 @@ contract MesaHook is IHooks, IUnlockCallback {
         });
         poolOf[token] = id;
 
-        poolManager.initialize(key, TickMath.getSqrtPriceAtTick(initialTick));
-        bytes memory result = poolManager.unlock(abi.encode(Action.Launch, abi.encode(key, msg.value, msg.sender)));
-        (uint256 devBuyTokens) = abi.decode(result, (uint256));
+        if (quote != NATIVE && devBuy > 0) {
+            // Exact amounts only: a quote that takes a transfer fee is refused.
+            uint256 before = ERC20(quote).balanceOf(address(this));
+            ERC20(quote).safeTransferFrom(msg.sender, address(this), devBuy);
+            if (ERC20(quote).balanceOf(address(this)) - before != devBuy) revert InvalidParams("quote transfer");
+        }
+
+        poolManager.initialize(key, TickMath.getSqrtPriceAtTick(quoteIs0 ? startTick : -startTick));
+        bytes memory result =
+            poolManager.unlock(abi.encode(Action.Launch, abi.encode(key, startTick, devBuy, msg.sender)));
+        uint256 devBuyTokens = abi.decode(result, (uint256));
 
         emit Launched(
             token,
             id,
             msg.sender,
+            quote,
             p.feeRecipient,
             p.name,
             p.symbol,
@@ -295,7 +339,7 @@ contract MesaHook is IHooks, IUnlockCallback {
             p.sniperFeeBps,
             p.snipeSeconds,
             p.maxBuyBps,
-            msg.value,
+            devBuy,
             devBuyTokens
         );
     }
@@ -314,32 +358,59 @@ contract MesaHook is IHooks, IUnlockCallback {
         if (p.maxBuyBps < MIN_MAX_BUY_BPS || p.maxBuyBps > BPS) revert InvalidParams("maxBuyBps");
     }
 
-    /// @notice Liquidity for `amount1` of token1 in `[sqrtA, sqrtB]`.
-    function _liquidityForAmount1(uint160 sqrtA, uint160 sqrtB, uint256 amount1) internal pure returns (uint256) {
-        return FullMath.mulDiv(amount1, FixedPoint96.Q96, sqrtB - sqrtA);
+    function _key(address token, address quote, bool quoteIs0) internal view returns (PoolKey memory) {
+        (address c0, address c1) = quoteIs0 ? (quote, token) : (token, quote);
+        return PoolKey({
+            currency0: Currency.wrap(c0),
+            currency1: Currency.wrap(c1),
+            fee: 0,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(this))
+        });
     }
 
     // ------------------------------------------------------------- claims
 
     /// @notice Claim all native HYPE accrued to `msg.sender`.
-    function claim() external nonReentrant returns (uint256 amount) {
-        amount = accrued[msg.sender];
-        if (amount == 0) revert NothingToClaim();
-        accrued[msg.sender] = 0;
-        poolManager.unlock(abi.encode(Action.Claim, abi.encode(msg.sender, amount)));
-        emit Claimed(msg.sender, amount);
+    function claim() external nonReentrant returns (uint256) {
+        return _claim(NATIVE);
     }
 
-    /// @notice Change a token's fee recipient. Only the current recipient can.
-    /// Fees already accrued stay with the previous recipient.
+    /// @notice Claim all of `quote` accrued to `msg.sender`.
+    function claim(address quote) external nonReentrant returns (uint256) {
+        return _claim(quote);
+    }
+
+    function _claim(address quote) internal returns (uint256 amount) {
+        amount = accruedOf[quote][msg.sender];
+        if (amount == 0) revert NothingToClaim();
+        accruedOf[quote][msg.sender] = 0;
+        poolManager.unlock(abi.encode(Action.Claim, abi.encode(msg.sender, quote, amount)));
+        emit Claimed(msg.sender, quote, amount);
+    }
+
+    /// @notice Propose a new fee recipient for a token. Only the current
+    /// recipient can; the new one must accept. Fees already accrued stay with
+    /// the previous recipient.
     function setFeeRecipient(address token, address next) external {
         PoolId id = poolOf[token];
         PoolConfig storage c = pools[id];
         if (c.token == address(0)) revert UnknownPool();
         if (msg.sender != c.feeRecipient) revert NotFeeRecipient();
         if (next == address(0)) revert InvalidParams("feeRecipient");
-        emit FeeRecipientChanged(id, c.feeRecipient, next);
-        c.feeRecipient = next;
+        pendingFeeRecipient[id] = next;
+        emit FeeRecipientProposed(id, next);
+    }
+
+    /// @notice Accept a proposed fee-recipient handover.
+    function acceptFeeRecipient(address token) external {
+        PoolId id = poolOf[token];
+        PoolConfig storage c = pools[id];
+        if (c.token == address(0)) revert UnknownPool();
+        if (msg.sender != pendingFeeRecipient[id]) revert NotFeeRecipient();
+        emit FeeRecipientChanged(id, c.feeRecipient, msg.sender);
+        c.feeRecipient = msg.sender;
+        delete pendingFeeRecipient[id];
     }
 
     // ------------------------------------------------------------- unlock
@@ -347,73 +418,84 @@ contract MesaHook is IHooks, IUnlockCallback {
     function unlockCallback(bytes calldata data) external onlyPoolManager returns (bytes memory) {
         (Action action, bytes memory args) = abi.decode(data, (Action, bytes));
         if (action == Action.Launch) {
-            (PoolKey memory key, uint256 devBuyHype, address buyer) = abi.decode(args, (PoolKey, uint256, address));
-            return abi.encode(_launchInUnlock(key, devBuyHype, buyer));
+            (PoolKey memory key, int24 startTick, uint256 devBuy, address buyer) =
+                abi.decode(args, (PoolKey, int24, uint256, address));
+            return abi.encode(_launchInUnlock(key, startTick, devBuy, buyer));
         }
-        (address recipient, uint256 amount) = abi.decode(args, (address, uint256));
-        poolManager.burn(address(this), NATIVE_ID, amount);
-        poolManager.take(CurrencyLibrary.ADDRESS_ZERO, recipient, amount);
+        (address recipient, address quote, uint256 amount) = abi.decode(args, (address, address, uint256));
+        Currency c = Currency.wrap(quote);
+        poolManager.burn(address(this), c.toId(), amount);
+        poolManager.take(c, recipient, amount);
         return "";
     }
 
-    function _launchInUnlock(PoolKey memory key, uint256 devBuyHype, address buyer)
+    function _launchInUnlock(PoolKey memory key, int24 startTick, uint256 devBuy, address buyer)
         internal
         returns (uint256 devBuyTokens)
     {
-        MesaToken token = MesaToken(Currency.unwrap(key.currency1));
+        PoolId id = key.toId();
+        PoolConfig storage c = pools[id];
+        bool q0 = c.quoteIs0;
+        Currency tokenC = Currency.wrap(c.token);
+        Currency quoteC = Currency.wrap(c.quote);
 
-        // 1. Entire supply as one one-sided position below the starting price.
-        int24 lower = TickMath.minUsableTick(TICK_SPACING);
-        uint128 liquidity = SafeCast.toUint128(
-            _liquidityForAmount1(
-                TickMath.getSqrtPriceAtTick(lower), TickMath.getSqrtPriceAtTick(initialTick), token.TOTAL_SUPPLY()
-            )
-        );
+        // 1. Entire supply as one one-sided position on the token side of the price.
+        (int24 lower, int24 upper, uint256 liquidity) = LaunchMath.position(q0, startTick);
         (BalanceDelta added,) = poolManager.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
-                tickLower: lower, tickUpper: initialTick, liquidityDelta: int256(uint256(liquidity)), salt: bytes32(0)
+                tickLower: lower,
+                tickUpper: upper,
+                liquidityDelta: int256(uint256(SafeCast.toUint128(liquidity))),
+                salt: bytes32(0)
             }),
             ""
         );
-        uint256 owed = uint256(uint128(-added.amount1()));
-        poolManager.sync(key.currency1);
-        token.transfer(address(poolManager), owed);
+        uint256 owed = uint256(uint128(-(q0 ? added.amount1() : added.amount0())));
+        poolManager.sync(tokenC);
+        MesaToken(c.token).transfer(address(poolManager), owed);
         poolManager.settle();
         // Rounding dust that did not fit the position is burned.
-        uint256 dust = token.balanceOf(address(this));
-        if (dust > 0) token.transfer(DEAD, dust);
+        uint256 dust = MesaToken(c.token).balanceOf(address(this));
+        if (dust > 0) MesaToken(c.token).transfer(DEAD, dust);
 
         // 2. Declared dev buy at the starting price. Hooks are skipped for
         // swaps this contract makes, so the fee and cap are applied here.
-        if (devBuyHype == 0) return 0;
-        PoolConfig storage c = pools[key.toId()];
-        uint256 fee = devBuyHype * c.buyFeeBps / BPS;
+        if (devBuy == 0) return 0;
+        uint256 fee = devBuy * c.buyFeeBps / BPS;
         BalanceDelta swapped = poolManager.swap(
             key,
             IPoolManager.SwapParams({
-                zeroForOne: true,
-                amountSpecified: -int256(devBuyHype - fee),
-                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                zeroForOne: q0,
+                amountSpecified: -int256(devBuy - fee),
+                sqrtPriceLimitX96: q0 ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
             }),
             ""
         );
-        devBuyTokens = uint256(uint128(swapped.amount1()));
-        uint256 maxTokens = token.TOTAL_SUPPLY() * MAX_DEV_BUY_BPS / BPS;
+        (int128 quoteDelta, int128 tokenDelta) =
+            q0 ? (swapped.amount0(), swapped.amount1()) : (swapped.amount1(), swapped.amount0());
+        devBuyTokens = uint256(uint128(tokenDelta));
+        uint256 maxTokens = SUPPLY * MAX_DEV_BUY_BPS / BPS;
         if (devBuyTokens > maxTokens) revert DevBuyTooLarge(devBuyTokens, maxTokens);
 
-        uint256 spent = uint256(uint128(-swapped.amount0()));
-        poolManager.settle{value: devBuyHype}();
-        poolManager.mint(address(this), NATIVE_ID, fee);
-        poolManager.take(key.currency1, buyer, devBuyTokens);
-        uint256 refund = devBuyHype - fee - spent;
-        if (refund > 0) poolManager.take(CurrencyLibrary.ADDRESS_ZERO, buyer, refund);
-        _accrue(key.toId(), c, true, fee, 0);
+        uint256 spent = uint256(uint128(-quoteDelta));
+        if (quoteC.isAddressZero()) {
+            poolManager.settle{value: devBuy}();
+        } else {
+            poolManager.sync(quoteC);
+            quoteC.transfer(address(poolManager), devBuy);
+            poolManager.settle();
+        }
+        poolManager.mint(address(this), quoteC.toId(), fee);
+        poolManager.take(tokenC, buyer, devBuyTokens);
+        uint256 refund = devBuy - fee - spent;
+        if (refund > 0) poolManager.take(quoteC, buyer, refund);
+        _accrue(id, c, true, fee, 0);
     }
 
     // ------------------------------------------------------------- fees
 
-    /// @dev Fee rates as a share of gross HYPE, in WAD (1e18 = 100%).
+    /// @dev Fee rates as a share of the gross quote amount, in WAD (1e18 = 100%).
     function _rates(PoolConfig storage c, bool buy) internal view returns (uint256 baseRate, uint256 sniperRate) {
         baseRate = uint256(buy ? c.buyFeeBps : c.sellFeeBps) * (WAD / BPS);
         if (buy && c.sniperFeeBps > 0) {
@@ -424,36 +506,37 @@ contract MesaHook is IHooks, IUnlockCallback {
         }
     }
 
-    /// @dev Fees on a swap's HYPE side, always as a share of the gross amount
+    /// @dev Fees on a swap's quote side, always as a share of the gross amount
     /// (what the buyer pays, or what the pool pays out to a seller).
-    /// `gross` says whether `hypeAmount` is that gross amount (exact-input
-    /// swaps) or the net amount the fee is added to (exact-output swaps).
-    function _fees(PoolConfig storage c, bool buy, uint256 hypeAmount, bool gross)
+    /// `gross` says whether `amount` is that gross amount (exact-input swaps)
+    /// or the net amount the fee is added to (exact-output swaps).
+    function _fees(PoolConfig storage c, bool buy, uint256 amount, bool gross)
         internal
         view
         returns (uint256 baseFee, uint256 sniperFee)
     {
         (uint256 baseRate, uint256 sniperRate) = _rates(c, buy);
         uint256 denom = gross ? WAD : WAD - baseRate - sniperRate;
-        baseFee = FullMath.mulDiv(hypeAmount, baseRate, denom);
-        sniperFee = FullMath.mulDiv(hypeAmount, sniperRate, denom);
+        baseFee = FullMath.mulDiv(amount, baseRate, denom);
+        sniperFee = FullMath.mulDiv(amount, sniperRate, denom);
     }
 
     function _accrue(PoolId id, PoolConfig storage c, bool buy, uint256 baseFee, uint256 sniperFee) internal {
         uint256 creator = baseFee * creatorShareBps / BPS;
-        accrued[c.feeRecipient] += creator;
-        accrued[protocolRecipient] += baseFee - creator + sniperFee;
+        accruedOf[c.quote][c.feeRecipient] += creator;
+        accruedOf[c.quote][protocolRecipient] += baseFee - creator + sniperFee;
         emit FeesTaken(id, buy, baseFee, sniperFee);
     }
 
-    /// @dev Take `amount` of native HYPE from the swap as ERC-6909 claims.
-    function _take(PoolKey calldata key, bool buy, uint256 hypeAmount, bool gross) internal returns (uint256 total) {
-        PoolId id = key.toId();
-        PoolConfig storage c = pools[id];
-        (uint256 baseFee, uint256 sniperFee) = _fees(c, buy, hypeAmount, gross);
+    /// @dev Take the fee from the swap's quote side as ERC-6909 claims.
+    function _take(PoolId id, PoolConfig storage c, bool buy, uint256 amount, bool gross)
+        internal
+        returns (uint256 total)
+    {
+        (uint256 baseFee, uint256 sniperFee) = _fees(c, buy, amount, gross);
         total = baseFee + sniperFee;
         if (total == 0) return 0;
-        poolManager.mint(address(this), NATIVE_ID, total);
+        poolManager.mint(address(this), Currency.wrap(c.quote).toId(), total);
         _accrue(id, c, buy, baseFee, sniperFee);
     }
 
@@ -492,7 +575,7 @@ contract MesaHook is IHooks, IUnlockCallback {
         revert DonationsDisabled();
     }
 
-    /// @dev HYPE is the specified currency for exact-input buys and
+    /// @dev The quote is the specified currency for exact-input buys and
     /// exact-output sells: the fee is taken here, from the specified amount,
     /// and remembered so afterSwap can reject partial fills.
     function beforeSwap(address sender, PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata)
@@ -500,20 +583,21 @@ contract MesaHook is IHooks, IUnlockCallback {
         onlyPoolManager
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        bool buy = params.zeroForOne;
+        if (sender == protocolRecipient) return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        PoolId id = key.toId();
+        PoolConfig storage c = pools[id];
+        bool buy = params.zeroForOne == c.quoteIs0;
         bool exactIn = params.amountSpecified < 0;
-        if (sender == protocolRecipient || buy != exactIn) {
-            return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
-        }
+        if (buy != exactIn) return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         uint256 amount = uint256(exactIn ? -params.amountSpecified : params.amountSpecified);
-        uint256 total = _take(key, buy, amount, exactIn);
-        _tset(T_FEE, key.toId(), total);
+        uint256 total = _take(id, c, buy, amount, exactIn);
+        _tset(T_FEE, id, total);
         return (IHooks.beforeSwap.selector, toBeforeSwapDelta(int128(int256(total)), 0), 0);
     }
 
-    /// @dev Rejects partial fills of HYPE-specified swaps, enforces the
-    /// snipe-window buy cap per transaction, and takes the fee when HYPE is
-    /// the unspecified currency (exact-input sells, exact-output buys).
+    /// @dev Rejects partial fills of quote-specified swaps, enforces the
+    /// snipe-window buy cap per transaction, and takes the fee when the quote
+    /// is the unspecified currency (exact-input sells, exact-output buys).
     function afterSwap(
         address sender,
         PoolKey calldata key,
@@ -523,18 +607,18 @@ contract MesaHook is IHooks, IUnlockCallback {
     ) external onlyPoolManager returns (bytes4, int128) {
         if (sender == protocolRecipient) return (IHooks.afterSwap.selector, 0);
         PoolId id = key.toId();
-        bool buy = params.zeroForOne;
+        PoolConfig storage c = pools[id];
+        bool q0 = c.quoteIs0;
+        bool buy = params.zeroForOne == q0;
         bool exactIn = params.amountSpecified < 0;
-        int128 hype = delta.amount0();
+        (int128 quoteDelta, int128 tokenDelta) =
+            q0 ? (delta.amount0(), delta.amount1()) : (delta.amount1(), delta.amount0());
 
-        if (buy) {
-            PoolConfig storage c = pools[id];
-            if (c.maxBuyBps < BPS && block.timestamp - c.launchedAt < c.snipeSeconds) {
-                uint256 bought = _tget(T_BOUGHT, id) + uint256(uint128(delta.amount1()));
-                uint256 maxTokens = MesaToken(c.token).TOTAL_SUPPLY() * c.maxBuyBps / BPS;
-                if (bought > maxTokens) revert MaxBuyExceeded(bought, maxTokens);
-                _tset(T_BOUGHT, id, bought);
-            }
+        if (buy && c.maxBuyBps < BPS && block.timestamp - c.launchedAt < c.snipeSeconds) {
+            uint256 bought = _tget(T_BOUGHT, id) + uint256(uint128(tokenDelta));
+            uint256 maxTokens = SUPPLY * c.maxBuyBps / BPS;
+            if (bought > maxTokens) revert MaxBuyExceeded(bought, maxTokens);
+            _tset(T_BOUGHT, id, bought);
         }
 
         if (buy == exactIn) {
@@ -543,12 +627,12 @@ contract MesaHook is IHooks, IUnlockCallback {
             uint256 fee = _tget(T_FEE, id);
             _tset(T_FEE, id, 0);
             // exact-in buy: -(gross - fee); exact-out sell: +(net + fee). Both are specified + fee.
-            if (int256(hype) != params.amountSpecified + int256(fee)) revert PartialFill();
+            if (int256(quoteDelta) != params.amountSpecified + int256(fee)) revert PartialFill();
             return (IHooks.afterSwap.selector, 0);
         }
 
-        uint256 amount = uint256(uint128(hype < 0 ? -hype : hype));
-        uint256 total = _take(key, buy, amount, exactIn);
+        uint256 amount = uint256(uint128(quoteDelta < 0 ? -quoteDelta : quoteDelta));
+        uint256 total = _take(id, c, buy, amount, exactIn);
         return (IHooks.afterSwap.selector, int128(int256(total)));
     }
 
@@ -600,15 +684,30 @@ contract MesaHook is IHooks, IUnlockCallback {
 
     // ------------------------------------------------------------- views
 
+    /// @notice Native HYPE claimable by `account`.
+    function accrued(address account) external view returns (uint256) {
+        return accruedOf[NATIVE][account];
+    }
+
     /// @notice The pool key of a Mesa token.
     function poolKeyOf(address token) external view returns (PoolKey memory) {
-        if (pools[poolOf[token]].token != token || token == address(0)) revert UnknownPool();
-        return PoolKey({
-            currency0: CurrencyLibrary.ADDRESS_ZERO,
-            currency1: Currency.wrap(token),
-            fee: 0,
-            tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(this))
-        });
+        PoolConfig storage c = pools[poolOf[token]];
+        if (c.token != token || token == address(0)) revert UnknownPool();
+        return _key(token, c.quote, c.quoteIs0);
+    }
+
+    /// @notice The fees a trade of `amount` gross quote (what a buyer pays in,
+    /// or what the pool pays a seller before fees) would pay right now, and
+    /// where they would go.
+    function previewFees(address token, uint256 amount, bool buy)
+        external
+        view
+        returns (uint256 baseFee, uint256 sniperFee, uint256 toCreator, uint256 toProtocol)
+    {
+        PoolConfig storage c = pools[poolOf[token]];
+        if (c.token != token || token == address(0)) revert UnknownPool();
+        (baseFee, sniperFee) = _fees(c, buy, amount, true);
+        toCreator = baseFee * creatorShareBps / BPS;
+        toProtocol = baseFee - toCreator + sniperFee;
     }
 }

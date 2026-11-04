@@ -27,7 +27,8 @@ contract DeployTest is Test {
             genesis: makeAddr("genesis"),
             owner: makeAddr("owner"),
             keeper: makeAddr("keeper"),
-            maxPerCall: 10 ether
+            maxPerCall: 10 ether,
+            quoteAdmin: makeAddr("quoteAdmin")
         });
     }
 
@@ -39,8 +40,14 @@ contract DeployTest is Test {
         assertEq(hook.creatorShareBps(), 7_000);
         assertEq(hook.initialTick(), 173_200);
         assertEq(hook.genesisLauncher(), makeAddr("genesis"));
-        // The production build, with room under the 24,576-byte limit.
-        assertLt(address(hook).code.length, 20_000, "deployed from the production profile");
+        assertEq(hook.quoteRegistry().admin(), makeAddr("quoteAdmin"));
+        // The production build, not the PoolManager's high-runs profile, and under the 24,576-byte limit.
+        assertEq(
+            address(hook).code.length,
+            vm.getDeployedCode("out/MesaHook.sol/MesaHook.json").length,
+            "deployed from the production profile"
+        );
+        assertLt(address(hook).code.length, 24_576);
     }
 
     function test_rehearsalRunsOnElysiumTestnet() public {
