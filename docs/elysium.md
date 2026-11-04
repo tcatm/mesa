@@ -19,6 +19,33 @@ official inbox on HyperEVM (`0xce59f8b65ad41c9dae4c07a0571a39824bd92cff`, per
 ElysPump). Mesa does not relay through it and will deploy once the public
 sequencer is open.
 
+## Rollup and bridge (mainnet, on HyperEVM)
+
+Kinetiq publishes mainnet addresses at launch. These were read on chain on
+2026-11-04, starting from the inbox (`Inbox.bridge()`, `Bridge.rollup()`, and
+so on), so each one is linked to the next by the contracts themselves.
+
+| Contract | Address |
+|---|---|
+| Inbox (deposits go here) | `0xce59f8b65ad41c9dae4c07a0571a39824bd92cff` |
+| Bridge (holds all bridged HYPE) | `0x503d572157113faaad4dbed2647bb10b949216b6` |
+| Rollup | `0x508c173dfe5f737b3493195bf785d71fa76fd217` |
+| Sequencer inbox | `0x7f3ff53aecb87261206ad3bdc27a88b6d8420fa6` |
+| Outbox (withdrawal claims) | `0xec6b106dfa14428fe5eec2a4065a7be599f02728` |
+
+Parameters at that time: the rollup reports chain ID 99901; withdrawals wait
+483,840 HyperEVM blocks (`confirmPeriodBlocks`, about 6 to 7 days); a deposit
+the sequencer ignores can be forced in after 24 hours (`maxTimeVariation`
+delay of 86,400 seconds); validators are allowlisted. 60,617 HYPE was
+bridged, 266 batches had been posted, and about 22,500 deposits were queued
+behind the last batch.
+
+A HYPE deposit is a standard retryable ticket to the inbox
+(`createRetryableTicket`, the deposit amount as `l2CallValue`). It credits
+the recipient on Elysium when the next batch includes it. BOXA's bridge
+sends exactly this, plus a separate 2% payment to its treasury in the same
+transaction (through Multicall3).
+
 ## Official Uniswap v4 (mainnet)
 
 Deployed by the Uniswap deployer `0x2179a60856e37dfeaaca0ab043b931fe224b27b6`.
