@@ -8,8 +8,8 @@ relying on it in a deployment.
 
 | Fact | Value | Source | Status |
 |---|---|---|---|
-| Mainnet chain ID | 99901 | ElysPump docs; KyberSwap integration PR | Two secondary sources |
-| Testnet chain ID | 99801 | Dwellir; ElysiumForge MCP server | Confirmed |
+| Mainnet chain ID | 99901 (`0x1863d`) | dRPC chain config (drpcorg/public #291, merged); ElysPump docs; KyberSwap integration | Confirmed |
+| Testnet chain ID | 99801 (`0x185d9`) | dRPC chain config; Dwellir | Confirmed |
 | Testnet RPC | `https://testnet-rpc.elysium.kinetiq.xyz` | Dwellir | Confirmed |
 | Gas token | HYPE, 18 decimals | Dwellir | Confirmed |
 | Stack | Arbitrum Orbit, Conduit sequencer, settles to HyperEVM | Dwellir | Confirmed |

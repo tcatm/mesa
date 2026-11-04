@@ -47,6 +47,6 @@ four medium ones, all fixed before this commit:
 across transactions; the buyback keeper is trusted on price.
 
 **Verified against sources.** kHYPE accrues through its exchange rate and
-does not rebase. Elysium testnet is chain 99801. The PoolManager address in
-circulation is a lead only and is a deploy parameter, not hardcoded. Mainnet
-chain ID 99901 is not yet confirmed from a primary source.
+does not rebase. Elysium mainnet is chain 99901 and testnet 99801 (dRPC's
+chain config). The PoolManager address is pinned in the deploy script for
+mainnet; see [elysium.md](elysium.md).
