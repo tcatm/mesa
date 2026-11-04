@@ -1,6 +1,6 @@
 # node.mesa.cx: the raw Elysium node and the server's status pages, only
 # under the secret path. rpc.mesa.cx: the relay, for wallets.
-# api.mesa.cx: the terminal API.
+# api.mesa.cx: the terminal API. status.mesa.cx: public health and uptime.
 node.mesa.cx {
 	handle_path /{$NODE_SECRET_PATH}/status/* {
 		root * /srv/status
@@ -20,4 +20,8 @@ api.mesa.cx {
 	reverse_proxy 127.0.0.1:8080 {
 		flush_interval -1
 	}
+}
+
+status.mesa.cx {
+	reverse_proxy 127.0.0.1:8090
 }

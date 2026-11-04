@@ -15,7 +15,7 @@ services:
     command:
       - --conf.file=/config/chaininfo.json
       - --parent-chain.connection.url=${PARENT_RPC}
-      - --node.inbox-reader.max-blocks-to-read=1000
+      - --node.inbox-reader.max-blocks-to-read=10000
       - --node.dangerous.disable-blob-reader
       - --node.data-availability.enable
       - --node.data-availability.rest-aggregator.enable
@@ -60,6 +60,22 @@ services:
       PORT: "8080"
     volumes:
       - /opt/mesa/data/indexer:/data
+
+  status:
+    build: ../status
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      PARENT_RPC: ${PARENT_RPC}
+      LIVE_RPC: https://rpc.agoradex.app
+      STATE: /state/status.db
+      HOST_PROC: /host/proc
+      DISK_PATH: /data
+    volumes:
+      - /proc:/host/proc:ro
+      - /opt/mesa/data:/data:ro
+      - /opt/mesa/data/status:/state
 
   caddy:
     image: caddy:2.8.4
