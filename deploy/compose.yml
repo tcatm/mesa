@@ -56,8 +56,23 @@ services:
     environment:
       NETWORK: testnet
       RPC: ${ELYSIUM_TESTNET_RPC}
-      DB: /data/mesa-testnet.db
+      DB: /data/terminal-testnet.db
       PORT: "8080"
+    volumes:
+      - /opt/mesa/data/indexer:/data
+
+  # The terminal on Elysium mainnet: every launchpad's pools, read straight
+  # from our own node. Served at api.mesa.cx/elysium/.
+  terminal:
+    build: ../indexer
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      NETWORK: mainnet
+      RPC: http://elysium:8547
+      DB: /data/terminal-mainnet.db
+      PORT: "8081"
     volumes:
       - /opt/mesa/data/indexer:/data
 
@@ -69,6 +84,8 @@ services:
     environment:
       PARENT_RPC: ${PARENT_RPC}
       LIVE_RPC: https://rpc.agoradex.app
+      INDEXER_URL: http://terminal:8081
+      INDEXER_NETWORK: mainnet
       STATE: /state/status.db
       HOST_PROC: /host/proc
       DISK_PATH: /data

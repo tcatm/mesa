@@ -21,6 +21,12 @@ api.mesa.cx {
 	handle /hyperevm/* {
 		reverse_proxy 127.0.0.1:8085
 	}
+	# The Elysium mainnet terminal (every launchpad), from our own node.
+	handle_path /elysium/* {
+		reverse_proxy 127.0.0.1:8081 {
+			flush_interval -1
+		}
+	}
 	handle {
 		reverse_proxy 127.0.0.1:8080 {
 			flush_interval -1

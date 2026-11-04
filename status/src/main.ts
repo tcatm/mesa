@@ -133,9 +133,9 @@ async function checkIndexer(): Promise<Check> {
     return {
       state: lag <= 200 ? 'up' : 'degraded',
       note: lag <= 200 ? 'Up to date' : `Catching up: ${lag} blocks behind`,
-      network: 'testnet',
+      network: env.INDEXER_NETWORK ?? 'testnet',
       lag,
-      tokensLaunched: s.tokensLaunched,
+      tokensLaunched: s.tokensLaunched ?? s.tokens,
       trades24h: s.trades24h,
     }
   } catch (e) {
