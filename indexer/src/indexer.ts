@@ -94,7 +94,8 @@ export class Indexer {
   /**
    * Index forever. The block range adapts: busy stretches of the chain can
    * make a full range's logs too large to return in time, so a failed range is
-   * halved (down to 50 blocks) and grows back after successes.
+   * halved (down to 50 blocks), a busy one shrinks to ~5,000 events, and a
+   * quiet one grows back.
    */
   async run(signal?: AbortSignal) {
     let range = this.n.range
@@ -107,10 +108,16 @@ export class Indexer {
           continue
         }
         const to = Math.min(head, from + range - 1)
-        await this.step(from, to)
+        const events = await this.step(from, to)
         setMeta(this.db, 'cursor', String(to + 1))
         setMeta(this.db, 'head', String(head))
-        range = Math.min(this.n.range, Math.ceil(range * 1.5))
+        // Size the next range by how busy this one was: aim for at most
+        // ~5,000 PoolManager events per request, so a bot-heavy stretch is
+        // read in small pieces instead of one huge response.
+        range =
+          events > 5_000
+            ? Math.max(50, Math.floor((range * 5_000) / events))
+            : Math.min(this.n.range, Math.ceil(range * 1.5))
         if (to === head) await sleep(1_000)
       } catch (e) {
         range = Math.max(50, Math.floor(range / 2))
@@ -214,7 +221,8 @@ export class Indexer {
 
   // ---------------------------------------------------------------- a range
 
-  async step(fromBlock: number, toBlock: number) {
+  /** Index one block range; returns how many PoolManager events it held. */
+  async step(fromBlock: number, toBlock: number): Promise<number> {
     const pms = this.n.poolManagers.map((p) => p.address)
     const pmLogs = await this.logs(fromBlock, toBlock, pms, [[T.init, T.swap]])
     const mesaLogs = this.n.mesa ? await this.logs(fromBlock, toBlock, [this.n.mesa.hook, this.n.mesa.burner]) : []
@@ -433,6 +441,7 @@ export class Indexer {
     if (newPools.length || trades.length) {
       console.log(JSON.stringify({ indexed: [fromBlock, toBlock], pools: newPools.length, trades: trades.length, transfers: transfers.length }))
     }
+    return pmLogs.length
   }
 }
 
