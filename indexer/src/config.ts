@@ -42,7 +42,7 @@ export const networks: Record<string, Network> = {
     hype: [ZERO, '0xba876237b0f021a6c6d852d6c26e107997cc5e81', '0x0269031ace34a7821e9d9980d087c35ce7c19eef'],
     usd: { address: '0xb47c4c8f73f009cc0c0d3f92b388d13e293f0b65', decimals: 6 },
     startBlock: 0,
-    range: 10_000,
+    range: Number(process.env.RANGE ?? 10_000),
   },
   testnet: {
     chainId: 99801,

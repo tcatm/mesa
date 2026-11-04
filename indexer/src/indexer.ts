@@ -91,7 +91,13 @@ export class Indexer {
     return Number(getMeta(this.db, 'cursor') ?? this.n.startBlock)
   }
 
+  /**
+   * Index forever. The block range adapts: busy stretches of the chain can
+   * make a full range's logs too large to return in time, so a failed range is
+   * halved (down to 50 blocks) and grows back after successes.
+   */
   async run(signal?: AbortSignal) {
+    let range = this.n.range
     while (!signal?.aborted) {
       try {
         const head = await this.rpc.getBlockNumber()
@@ -100,14 +106,18 @@ export class Indexer {
           await sleep(1_000)
           continue
         }
-        const to = Math.min(head, from + this.n.range - 1)
+        const to = Math.min(head, from + range - 1)
         await this.step(from, to)
         setMeta(this.db, 'cursor', String(to + 1))
         setMeta(this.db, 'head', String(head))
+        range = Math.min(this.n.range, Math.ceil(range * 1.5))
         if (to === head) await sleep(1_000)
       } catch (e) {
-        console.error(JSON.stringify({ indexerError: e instanceof Error ? e.message.slice(0, 300) : String(e) }))
-        await sleep(5_000)
+        range = Math.max(50, Math.floor(range / 2))
+        console.error(
+          JSON.stringify({ indexerError: e instanceof Error ? e.message.slice(0, 300) : String(e), range }),
+        )
+        await sleep(2_000)
       }
     }
   }
@@ -270,19 +280,42 @@ export class Indexer {
     const mesaHook = this.n.mesa ? lc(this.n.mesa.hook) : null
     const mesaBurner = this.n.mesa ? lc(this.n.mesa.burner) : null
 
-    const trades: Record<string, unknown>[] = []
+    // One trade per (transaction, pool): a transaction that swaps the same pool
+    // many times (routing, or a bot trading back and forth) is its net trade.
+    const groups = new Map<string, { l: RawLog; e: utils.Result; q: BigNumber; t: BigNumber; base: number; sniper: number }>()
     for (const l of swaps) {
       const e = pmAbi.parseLog(l).args
       const p = this.pools.get(lc(e.id))!
+      const tx = lc(l.transactionHash)
+      const swapper = lc(e.sender)
+      const isMesa = p.hook === mesaHook
+      const isBuyback = isMesa && swapper === mesaBurner
+      const fee = isMesa && !isBuyback ? (fees.get(`${tx}:${p.id}`)?.shift() ?? { base: 0, sniper: 0 }) : { base: 0, sniper: 0 }
       const q: BigNumber = p.quote_is0 ? e.amount0 : e.amount1
       const t: BigNumber = p.quote_is0 ? e.amount1 : e.amount0
+      const k = `${tx}:${p.id}`
+      const g = groups.get(k)
+      if (!g) groups.set(k, { l, e, q, t, base: fee.base, sniper: fee.sniper })
+      else {
+        // Keep the first log's position, the last swap's price and the summed amounts.
+        g.e = e
+        g.q = g.q.add(q)
+        g.t = g.t.add(t)
+        g.base += fee.base
+        g.sniper += fee.sniper
+      }
+    }
+
+    const trades: Record<string, unknown>[] = []
+    for (const { l, e, q, t, base, sniper } of groups.values()) {
+      const p = this.pools.get(lc(e.id))!
       if (q.isZero() && t.isZero()) continue
       const side = q.isNegative() ? 'buy' : 'sell'
       const tx = lc(l.transactionHash)
       const swapper = lc(e.sender)
       const isMesa = p.hook === mesaHook
       const kind = isMesa && swapper === mesaBurner ? 'buyback' : isMesa && swapper === mesaHook ? 'dev' : 'trade'
-      const fee = isMesa && kind !== 'buyback' ? (fees.get(`${tx}:${p.id}`)?.shift() ?? { base: 0, sniper: 0 }) : { base: 0, sniper: 0 }
+      const fee = { base, sniper }
       const pooled = units(q.abs(), this.dec(p.quote))
       const quoteAmount = side === 'buy' ? pooled + fee.base + fee.sniper : pooled - fee.base - fee.sniper
       const price = this.price(p, e.sqrtPriceX96)
