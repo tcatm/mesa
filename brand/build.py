@@ -6,7 +6,7 @@ at 259, every slanted edge at a slope of 3/7 (240 across over the full
 height), mesas 182 wide. Each mesa's right shoulder meets the next shape's
 left edge exactly, and the peak's right side continues the second mesa's.
 Traced from the original artwork (brand/source/original.jpg).
-Colours are the site's only: black, white, sandstone and night.
+Colours: black, white, the site's sandstone and night, and mint.
 
     python3 brand/build.py        # writes brand/svg/*.svg
 """
@@ -14,6 +14,7 @@ from pathlib import Path
 
 SANDSTONE = "#EEA155"  # the site's accent, oklch(0.77 0.13 63)
 NIGHT = "#0F0D0C"      # the site's background, oklch(0.16 0.004 60)
+MINT = "#97FCE4"       # secondary accent
 BLACK, WHITE = "#000000", "#FFFFFF"
 
 # The mark, in a 1066 x 560 box.
@@ -81,20 +82,26 @@ VARIANTS = {
     "mesa-mark-black": mark(BLACK),
     "mesa-mark-white": mark(WHITE),
     "mesa-mark-sandstone": mark(SANDSTONE),
+    "mesa-mark-mint": mark(MINT),
     # The badge with the M as negative space (transparent).
     "mesa-badge-knockout": badge_knockout("currentColor"),
     "mesa-badge-knockout-black": badge_knockout(BLACK),
     "mesa-badge-knockout-white": badge_knockout(WHITE),
     "mesa-badge-knockout-sandstone": badge_knockout(SANDSTONE),
+    "mesa-badge-knockout-mint": badge_knockout(MINT),
     # The badge in two solid colours (works on any background).
     "mesa-badge-black": badge_solid(BLACK, WHITE),
     "mesa-badge-white": badge_solid(WHITE, BLACK),
     "mesa-badge-night": badge_solid(NIGHT, SANDSTONE),
     "mesa-badge-sandstone": badge_solid(SANDSTONE, NIGHT),
+    "mesa-badge-night-mint": badge_solid(NIGHT, MINT),
+    "mesa-badge-mint": badge_solid(MINT, NIGHT),
     # Full-bleed squares for app icons, avatars and favicons.
     "mesa-icon-black": icon(BLACK, WHITE),
     "mesa-icon-white": icon(WHITE, BLACK),
     "mesa-icon-night": icon(NIGHT, SANDSTONE),
+    "mesa-icon-night-mint": icon(NIGHT, MINT),
+    "mesa-icon-mint": icon(MINT, NIGHT),
 }
 
 if __name__ == "__main__":
