@@ -101,3 +101,15 @@ assertion (about every 15 minutes on testnet).
 
 **Mainnet RPCs.** `rpc.agoradex.app` and BOXA's live RPC serve the state the
 next batch will produce; BOXA's plain RPC serves confirmed state only.
+
+## 2026-11-04: indexer and terminal API
+
+**Shipped.** `indexer/`: follows Mesa's contracts on Elysium and stores every
+launch, trade (with its fees), transfer and buyback in SQLite, and serves the
+terminal's API: the token table, token pages with forensics (dev buy and
+holdings, bundle share, snipe-window buys, top holders, the creator's other
+launches), trades, candles, holders, stats and a live event stream.
+
+**Checked live.** Against the testnet deployment it indexed both rehearsal
+launches and all nine trades in about 20 seconds; fees, prices, holder
+counts and burned $MESA match the chain.
