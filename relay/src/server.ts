@@ -157,12 +157,29 @@ async function rawCall(t: { from?: string; to?: string; data?: string; value?: B
 
 const mesaTokenCache = new Map<string, boolean>()
 const hookIface = new utils.Interface(['function poolOf(address) view returns (bytes32)'])
-/** Whether a relayed transaction may call `to`. */
-async function allowed(to: string | undefined): Promise<boolean> {
+const PERMIT2 = '0x000000000022d473030f116ddee9f6b43ac78ba3'
+const APPROVE = '0x095ea7b3'
+
+/**
+ * Whether a relayed transaction may go through. Besides the allowlist and
+ * Mesa's own tokens, two plain kinds that trading needs:
+ *  - `approve(Permit2, amount)` on any token (the first step of a sell), and
+ *    nothing else on arbitrary contracts;
+ *  - a plain HYPE transfer to a wallet (no calldata, no contract code), to fund
+ *    or empty a trading wallet.
+ */
+async function allowed(tx: { to?: string; data: string; value: BigNumber }): Promise<boolean> {
   if (allowAny) return true
+  const to = tx.to
   if (!to) return false // contract creation
   const a = to.toLowerCase()
   if (allowTo.has(a) || a === mesaHook) return true
+  const data = tx.data.toLowerCase()
+  if (data.startsWith(APPROVE) && data.length === 138 && `0x${data.slice(34, 74)}` === PERMIT2) return true
+  if ((data === '0x' || data === '') && tx.value.gt(0)) {
+    const code = (await upstream.getCode(a).catch(() => '0x')) as string
+    if (code === '0x') return true
+  }
   if (!mesaHook) return false
   const cached = mesaTokenCache.get(a)
   if (cached !== undefined) return cached
@@ -238,7 +255,9 @@ async function sendRaw(raw: string, ip: string): Promise<string> {
   if (!tx.from || !tx.hash) throw new RpcError(-32602, 'unsigned transaction')
   if (tx.chainId !== cfg.chainId) throw new RpcError(-32602, `wrong chain: expected ${cfg.chainId}`)
   if (tx.gasLimit.gt(maxGas)) throw new RpcError(-32602, `gas limit above ${maxGas}`)
-  if (!(await allowed(tx.to))) reject('not-allowed', -32003, 'this relay only sends transactions to Mesa contracts')
+  if (!(await allowed({ to: tx.to, data: tx.data, value: tx.value }))) {
+    reject('not-allowed', -32003, 'this relay only sends transactions to Mesa contracts and trading routers')
+  }
   const from = tx.from.toLowerCase()
   if (pending.has(tx.hash)) return tx.hash
   if (limited(`ip:${ip}`, perIp) || limited(`from:${from}`, perSender)) reject('rate-limited', -32005, 'rate limited')

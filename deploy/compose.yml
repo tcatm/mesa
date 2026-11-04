@@ -44,8 +44,11 @@ services:
       UPSTREAM_RPC: http://elysium:8547
       PARENT_RPC: ${PARENT_RPC}
       RELAYER_KEY: ${RELAYER_KEY}
-      # Withdrawals only (ArbSys, and MesaWithdraw in front of it) until Mesa is on mainnet.
-      ALLOW_TO: "0x0000000000000000000000000000000000000064,0xe1d51502D5bc0d67f48df64A589e89663D0Ce59B"
+      # Withdrawals (ArbSys, MesaWithdraw) and trading: the Universal Routers of
+      # the official and ElysPump PoolManagers. Permit2 approvals and plain HYPE
+      # transfers to wallets are allowed by the relay itself.
+      ALLOW_TO: "0x0000000000000000000000000000000000000064,0xe1d51502D5bc0d67f48df64A589e89663D0Ce59B,0x1b341fdd55d56f8e08409a2c25ddfad93eb03c1a,0x751cefb96ac88db5327d39e0fbdd5d882d80b430"
+      MAX_HYPE_PER_HOUR: "0.25"
       PORT: "8545"
 
   indexer:
