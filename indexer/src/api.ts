@@ -4,6 +4,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { BUNDLE_BLOCKS, DEAD, ZERO, type Network } from './config.js'
 import { getMeta } from './db.js'
 import { live } from './indexer.js'
+import { bridgeStats } from './bridgeTracker.js'
 
 const DAY = 86_400
 type Row = Record<string, unknown>
@@ -28,6 +29,7 @@ const PX = `(CASE WHEN token_amount > 0 AND value_hype > 0 AND (price_hype IS NU
  *   GET /tokens/:address/holders?limit=
  *   GET /venues
  *   GET /wallets/:address   holdings and PnL
+ *   GET /bridge             Mesa bridge totals and recent transfers
  *   GET /stats
  *   GET /stream            server-sent events: pool, trade
  *   GET /health
@@ -373,6 +375,7 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
       if (parts[0] === 'health' || parts.length === 0) return json({ ok: true, ...stats() })
       if (parts[0] === 'stats') return json(stats())
       if (parts[0] === 'venues') return json(venues())
+      if (parts[0] === 'bridge' && parts.length === 1) return json(bridgeStats(db))
       if (parts[0] === 'wallets' && parts[1] && parts.length === 2) {
         const a = parts[1].toLowerCase()
         if (!/^0x[0-9a-f]{40}$/.test(a)) return json({ error: 'bad address' }, 400)

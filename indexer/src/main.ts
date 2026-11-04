@@ -14,6 +14,7 @@ import { networks } from './config.js'
 import { open } from './db.js'
 import { Indexer } from './indexer.js'
 import { MetadataWorker } from './metadata.js'
+import { BridgeTracker, MAINNET_BRIDGE } from './bridgeTracker.js'
 
 const net = process.env.NETWORK ?? 'mainnet'
 const n = networks[net]
@@ -26,3 +27,5 @@ serve(db, n, Number(process.env.PORT ?? 8080))
 console.log(JSON.stringify({ api: Number(process.env.PORT ?? 8080), network: net, rpc: n.rpc.replace(/\/[^/]{20,}$/, '/…') }))
 void new Indexer(db, rpc, n).run()
 void new MetadataWorker(db, n.rpc).run()
+// Mesa's bridge tracker is mainnet only (its contracts' addresses are mainnet's).
+if (net === 'mainnet') void new BridgeTracker(db, { ...MAINNET_BRIDGE, childRpc: n.rpc }).run()

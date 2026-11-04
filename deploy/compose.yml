@@ -74,6 +74,7 @@ services:
     environment:
       NETWORK: mainnet
       RPC: http://elysium:8547
+      PARENT_RPC: ${PARENT_RPC}
       DB: /data/terminal-mainnet.db
       PORT: "8081"
       # Largest block range per request; busy stretches shrink it by event count.
