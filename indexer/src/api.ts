@@ -147,7 +147,10 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
       address,
       ...ex,
     )
-    const pools = all(`SELECT id, venue, hook, pool_manager, quote, fee, tick_spacing, block, timestamp, tx FROM pools WHERE token = ? ORDER BY block`, address)
+    const pools = all(
+      `SELECT id, venue, hook, pool_manager, currency0, currency1, quote, fee, tick_spacing, block, timestamp, tx FROM pools WHERE token = ? ORDER BY block`,
+      address,
+    )
     const first = pools[0]
     const mesa = one('SELECT * FROM mesa_launches WHERE token = ?', address)
     const snipeEnd = mesa ? (first.timestamp as number) + (mesa.snipe_seconds as number) : (first.timestamp as number) + 300
