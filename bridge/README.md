@@ -17,14 +17,23 @@ public sequencer opens, so it takes a minimum output; if the price has moved
 past it, or the buy fails for any reason, the router sends the HYPE to the
 recipient on Elysium.
 
-The functions return transaction requests for a wallet to sign
-(`depositRequest`, `bridgeAndBuyRequest`, `withdrawRequest`) and read status
-(`depositStatus`, `withdrawalStatus`, `queueStatus`). `claimWithdrawal` sends
-the claim.
+The functions return plain transaction requests (`{ chainId, to, data,
+value }`) for a wallet to sign, so a wagmi or viem frontend can send them
+directly: `depositRequest`, `bridgeAndBuyRequest`, `withdrawRequest`,
+`claimRequest`. Deposits are built from HyperEVM state only and never need an
+Elysium RPC; unused bridge gas is refunded on Elysium.
+
+Status: `depositProgress` (HyperEVM only: place in line, and whether a posted
+batch includes it), `depositStatus` (reads Elysium: credited or not),
+`withdrawalStatus`, `queueStatus`.
+
+Before Elysium's public sequencer opens (Nov 9), deposits work on mainnet but
+withdrawals cannot be sent on Elysium directly.
 
 ```bash
 npm ci
 npm run cli -- queue --net mainnet                  # deposits waiting for the next batch
-npm run cli -- deposit-status --net mainnet --tx 0x..
+npm run cli -- deposit-progress --net mainnet --tx 0x..
+npm run cli -- deposit --net mainnet --amount 0.5 --dry true --from 0x..   # print, don't send
 PRIVATE_KEY=0x.. npm run cli -- deposit --net testnet --amount 0.01
 ```

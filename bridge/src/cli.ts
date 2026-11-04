@@ -4,10 +4,13 @@
  *   npm run cli -- queue      --net testnet
  *   npm run cli -- deposit    --net testnet --amount 0.01 [--to 0x..]
  *   npm run cli -- bridge-buy --net testnet --amount 0.01 --token 0x.. --router 0x.. [--min-out 0] [--to 0x..]
- *   npm run cli -- deposit-status    --net testnet --tx 0x..
+ *   npm run cli -- deposit-progress  --net testnet --tx 0x..   (HyperEVM only)
+ *   npm run cli -- deposit-status    --net testnet --tx 0x..   (reads Elysium too)
  *   npm run cli -- withdraw          --net testnet --amount 0.01 [--to 0x..]
  *   npm run cli -- withdrawal-status --net testnet --tx 0x..
  *   npm run cli -- claim             --net testnet --tx 0x..
+ *
+ * Add --dry true (with --from 0x..) to print a transaction instead of sending it.
  *
  * Env: PRIVATE_KEY (for commands that send), PARENT_RPC and CHILD_RPC to
  * override the public endpoints.
@@ -15,9 +18,9 @@
 import { BigNumber, Wallet, providers, utils } from 'ethers'
 
 import {
-  BRIDGE_BUY_GAS,
   bridgeAndBuyRequest,
-  claimWithdrawal,
+  claimRequest,
+  depositProgress,
   defaultRpc,
   depositRequest,
   depositStatus,
@@ -25,6 +28,7 @@ import {
   withdrawRequest,
   withdrawalStatus,
   type Net,
+  type TxRequest,
 } from './index.js'
 
 const [cmd, ...rest] = process.argv.slice(2)
@@ -42,6 +46,19 @@ function wallet(p: providers.Provider): Wallet {
 }
 
 const hype = (s: string) => utils.parseEther(s)
+
+/** Send `req` from `w`, or with --dry true just print it. */
+async function send(w: Wallet | undefined, req: TxRequest, label: string) {
+  console.log(label, { to: req.to, value: utils.formatEther(req.value) + ' HYPE', chainId: req.chainId })
+  if (args.dry === 'true' || !w) return console.log('dry run, not sent:', JSON.stringify({ to: req.to, data: req.data, value: req.value.toString() }))
+  const tx = await w.sendTransaction({ to: req.to, data: req.data, value: BigNumber.from(req.value), chainId: req.chainId })
+  console.log('sent:', tx.hash)
+  await tx.wait()
+  console.log('included')
+}
+
+const dry = () => args.dry === 'true'
+const fromAddr = (w?: Wallet) => w?.address ?? args.from
 const show = (o: unknown) =>
   console.log(JSON.stringify(o, (_, v) => (v?.type === 'BigNumber' ? BigNumber.from(v).toString() : v), 2))
 
@@ -51,58 +68,56 @@ async function main() {
       return show(await queueStatus({ net, parentProvider: parent }))
 
     case 'deposit': {
-      const w = wallet(parent)
+      const w = dry() ? undefined : wallet(parent)
       const req = await depositRequest({
         net,
         amount: hype(args.amount),
-        from: w.address,
+        from: fromAddr(w),
         to: args.to,
         parentProvider: parent,
-        childProvider: child,
+        childProvider: process.env.CHILD_RPC ? child : undefined,
       })
-      const tx = await w.sendTransaction(req.txRequest)
-      console.log('deposit sent on HyperEVM:', tx.hash, 'value', utils.formatEther(req.txRequest.value), 'HYPE')
-      await tx.wait()
-      return console.log('included on HyperEVM; credited on Elysium with the next batch')
+      return send(w, req, 'deposit on HyperEVM; credited on Elysium with the next batch')
     }
 
     case 'bridge-buy': {
-      const w = wallet(parent)
+      const w = dry() ? undefined : wallet(parent)
       const req = await bridgeAndBuyRequest({
         net,
         amount: hype(args.amount),
-        from: w.address,
+        from: fromAddr(w),
         to: args.to,
         router: args.router,
         token: args.token,
         minOut: BigNumber.from(args['min-out'] ?? 0),
-        gasLimit: args.gas ? BigNumber.from(args.gas) : BRIDGE_BUY_GAS,
+        gasLimit: args.gas ? BigNumber.from(args.gas) : undefined,
         parentProvider: parent,
-        childProvider: child,
+        childProvider: process.env.CHILD_RPC ? child : undefined,
       })
-      const tx = await w.sendTransaction(req.txRequest)
-      console.log('bridge-and-buy sent on HyperEVM:', tx.hash, 'value', utils.formatEther(req.txRequest.value), 'HYPE')
-      await tx.wait()
-      return console.log('included on HyperEVM; runs on Elysium with the next batch')
+      return send(w, req, 'bridge-and-buy on HyperEVM; runs on Elysium with the next batch')
     }
+
+    case 'deposit-progress':
+      return show(await depositProgress({ net, parentTxHash: args.tx, parentProvider: parent }))
 
     case 'deposit-status':
       return show(await depositStatus({ parentTxHash: args.tx, parentProvider: parent, childProvider: child }))
 
     case 'withdraw': {
-      const w = wallet(child)
-      const req = await withdrawRequest({ net, amount: hype(args.amount), from: w.address, to: args.to })
-      const tx = await w.sendTransaction(req.txRequest)
-      console.log('withdrawal sent on Elysium:', tx.hash)
-      await tx.wait()
-      return console.log('included; claim on HyperEVM after the challenge period')
+      const w = dry() ? undefined : wallet(child)
+      return send(w, withdrawRequest({ net, amount: hype(args.amount), from: fromAddr(w), to: args.to }), 'withdrawal on Elysium')
     }
 
     case 'withdrawal-status':
       return show(await withdrawalStatus({ childTxHash: args.tx, parentProvider: parent, childProvider: child }))
 
-    case 'claim':
-      return show(await claimWithdrawal({ childTxHash: args.tx, parentSigner: wallet(parent), childProvider: child }))
+    case 'claim': {
+      const reqs = await claimRequest({ net, childTxHash: args.tx, parentProvider: parent, childProvider: child })
+      if (reqs.length === 0) return console.log('nothing claimable yet')
+      const w = dry() ? undefined : wallet(parent)
+      for (const r of reqs) await send(w, r, 'claim on HyperEVM')
+      return
+    }
 
     default:
       throw new Error(`unknown command ${cmd ?? '(none)'}`)
