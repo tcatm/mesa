@@ -76,6 +76,8 @@ services:
       RPC: http://elysium:8547
       DB: /data/terminal-mainnet.db
       PORT: "8081"
+      # Largest block range per request; busy stretches shrink it by event count.
+      RANGE: "50000"
     volumes:
       - /opt/mesa/data/indexer:/data
 
