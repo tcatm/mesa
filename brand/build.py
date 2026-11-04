@@ -6,12 +6,12 @@ at 259, every slanted edge at a slope of 3/7 (240 across over the full
 height), mesas 182 wide. Each mesa's right shoulder meets the next shape's
 left edge exactly, and the peak's right side continues the second mesa's.
 Traced from the original artwork (brand/source/original.jpg).
+Colours are the site's only: black, white, sandstone and night.
 
     python3 brand/build.py        # writes brand/svg/*.svg
 """
 from pathlib import Path
 
-BLUE = "#1B4382"       # sampled from the original
 SANDSTONE = "#EEA155"  # the site's accent, oklch(0.77 0.13 63)
 NIGHT = "#0F0D0C"      # the site's background, oklch(0.16 0.004 60)
 BLACK, WHITE = "#000000", "#FFFFFF"
@@ -75,43 +75,26 @@ def icon(bg, m):
     return svg(BADGE, BADGE, body, "Mesa")
 
 
-def original():
-    """The original composition: a white badge, M knocked out, on a blue field."""
-    pad = 340
-    size = BADGE + 2 * pad
-    body = (
-        f'  <rect width="{size}" height="{size}" fill="{BLUE}"/>\n'
-        f'  <path fill="{WHITE}" fill-rule="evenodd" transform="translate({pad} {pad})" '
-        f'd="{rounded_square(BADGE, RADIUS)} {mark_path(MARK_X, MARK_Y)}"/>'
-    )
-    return svg(size, size, body, "Mesa")
-
-
 VARIANTS = {
     # The M alone.
     "mesa-mark": mark("currentColor"),
     "mesa-mark-black": mark(BLACK),
     "mesa-mark-white": mark(WHITE),
-    "mesa-mark-blue": mark(BLUE),
     "mesa-mark-sandstone": mark(SANDSTONE),
     # The badge with the M as negative space (transparent).
     "mesa-badge-knockout": badge_knockout("currentColor"),
     "mesa-badge-knockout-black": badge_knockout(BLACK),
     "mesa-badge-knockout-white": badge_knockout(WHITE),
-    "mesa-badge-knockout-blue": badge_knockout(BLUE),
     "mesa-badge-knockout-sandstone": badge_knockout(SANDSTONE),
     # The badge in two solid colours (works on any background).
-    "mesa-badge-blue": badge_solid(BLUE, WHITE),
-    "mesa-badge-white": badge_solid(WHITE, BLUE),
     "mesa-badge-black": badge_solid(BLACK, WHITE),
-    "mesa-badge-white-black": badge_solid(WHITE, BLACK),
+    "mesa-badge-white": badge_solid(WHITE, BLACK),
     "mesa-badge-night": badge_solid(NIGHT, SANDSTONE),
+    "mesa-badge-sandstone": badge_solid(SANDSTONE, NIGHT),
     # Full-bleed squares for app icons, avatars and favicons.
-    "mesa-icon-blue": icon(BLUE, WHITE),
     "mesa-icon-black": icon(BLACK, WHITE),
+    "mesa-icon-white": icon(WHITE, BLACK),
     "mesa-icon-night": icon(NIGHT, SANDSTONE),
-    # The original composition, cleaned up.
-    "mesa-original": original(),
 }
 
 if __name__ == "__main__":

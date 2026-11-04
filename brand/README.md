@@ -13,14 +13,12 @@ of the M's pixels; the remainder is the original's soft, uneven edges.
 |---|---|
 | `mesa-mark*.svg` | The M alone. `mesa-mark.svg` takes the surrounding text colour (`currentColor`). |
 | `mesa-badge-knockout*.svg` | The badge with the M as negative space: the background shows through the M. |
-| `mesa-badge-*.svg` | The badge in two solid colours, for any background. |
+| `mesa-badge-*.svg` | The badge in two solid colours (black, white, night, sandstone), for any background. |
 | `mesa-icon-*.svg` | Full-bleed squares for app icons and avatars (platforms round the corners). |
-| `mesa-original.svg` | The original composition: white knockout badge on the blue field. |
-| `png/` | Favicons (`favicon.ico`, 16 to 48), PWA icons (192, 512), Apple touch icon (180), avatars (1024). |
+| `png/` | Favicon (`favicon.ico`, 16 to 48) and PWA icons (192, 512) from the night badge; Apple touch icons (180) and avatars (1024) in night and black. |
 
-Colours: blue `#1B4382` (from the original), sandstone `#EEA155` and night
-`#0F0D0C` (the site's palette). On the site, the sandstone mark or the night
-badge sit with the rest of the design; blue suits contexts outside it.
+Colours: black, white, and the site's sandstone `#EEA155` and night
+`#0F0D0C`. Nothing else: the original's blue is not used.
 
 Clear space: keep at least the width of one mesa top (182 of 1066 units,
 about a sixth of the M's width) clear around the mark. Smallest size: 16 px
