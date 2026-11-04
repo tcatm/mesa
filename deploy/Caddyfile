@@ -17,8 +17,14 @@ rpc.mesa.cx {
 }
 
 api.mesa.cx {
-	reverse_proxy 127.0.0.1:8080 {
-		flush_interval -1
+	# Other chains' market data (Codex, via the market service).
+	handle /hyperevm/* {
+		reverse_proxy 127.0.0.1:8085
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8080 {
+			flush_interval -1
+		}
 	}
 }
 

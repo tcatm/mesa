@@ -77,6 +77,16 @@ services:
       - /opt/mesa/data:/data:ro
       - /opt/mesa/data/status:/state
 
+  # Market data for chains Mesa does not index (HyperEVM), from Codex.
+  market:
+    build: ../market
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8085:8085"
+    environment:
+      CODEX_API_KEY: ${CODEX_API_KEY}
+      PORT: "8085"
+
   caddy:
     image: caddy:2.8.4
     restart: unless-stopped

@@ -11,6 +11,7 @@ services that changed. Pushing to main is the deployment.
 | `elysium` | Our Elysium mainnet node (Nitro). Raw RPC only under `node.mesa.cx/<secret>/` |
 | `relay` | `rpc.mesa.cx`: the wallet RPC that relays signed transactions through the inbox |
 | `indexer` | `api.mesa.cx`: the terminal API (testnet until Mesa is on mainnet) |
+| `market` | `api.mesa.cx/hyperevm/...`: HyperEVM token lists, charts and trades from Codex, cached (the key stays on the server) |
 | `status` | `status.mesa.cx`: public health, sync progress and uptime of the others |
 | `caddy` | HTTPS for all of them, certificates included |
 
