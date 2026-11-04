@@ -96,7 +96,7 @@ contract Deploy is Script {
         check(s);
         vm.startBroadcast();
         if (s.rehearsal) {
-            manager = IPoolManager(vm.deployCode("PoolManager.sol:PoolManager", abi.encode(s.owner)));
+            manager = IPoolManager(vm.deployCode("out/PoolManager.sol/PoolManager.json", abi.encode(s.owner)));
             console.log("PoolManager (rehearsal only)", address(manager));
         } else {
             manager = IPoolManager(s.poolManager);
