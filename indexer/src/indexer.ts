@@ -327,7 +327,13 @@ export class Indexer {
       const fee = { base, sniper }
       const pooled = units(q.abs(), this.dec(p.quote))
       const quoteAmount = side === 'buy' ? pooled + fee.base + fee.sniper : pooled - fee.base - fee.sniper
-      const price = this.price(p, e.sqrtPriceX96)
+      const tokenAmount = units(t.abs(), this.dec(p.token))
+      // The pool's price after the swap, unless it is far from what the trade
+      // paid: a swap that exhausts the pool's liquidity leaves the price at the
+      // tick bounds (up to 3.4e38), so then the execution price is recorded.
+      const spot = this.price(p, e.sqrtPriceX96)
+      const exec = tokenAmount > 0 && quoteAmount > 0 ? quoteAmount / tokenAmount : null
+      const price = exec !== null && (spot > exec * 5 || spot < exec / 5) ? exec : spot
       const rate = this.hypeOf(p.quote)
       const priceHype = rate === null ? null : price * rate
       // A token that is itself a quote elsewhere: its HYPE rate is this trade's.
@@ -343,7 +349,7 @@ export class Indexer {
         side,
         kind,
         quote_amount: quoteAmount,
-        token_amount: units(t.abs(), this.dec(p.token)),
+        token_amount: tokenAmount,
         fee: fee.base,
         sniper_fee: fee.sniper,
         price,

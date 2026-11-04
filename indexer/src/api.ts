@@ -9,6 +9,14 @@ const DAY = 86_400
 type Row = Record<string, unknown>
 
 /**
+ * A trade's HYPE price, robustly: the pool's price after the swap, unless that
+ * is far (over 5x) from what the trade actually paid. A swap that exhausts a
+ * pool's liquidity leaves the price at the tick bounds (up to 3.4e38), so then
+ * the execution price (HYPE paid / tokens) is used instead.
+ */
+const PX = `(CASE WHEN token_amount > 0 AND value_hype > 0 AND (price_hype IS NULL OR price_hype > 5 * value_hype / token_amount OR price_hype < 0.2 * value_hype / token_amount) THEN value_hype / token_amount ELSE price_hype END)`
+
+/**
  * The terminal's read API, across every launchpad on Elysium's v4
  * PoolManagers. Prices and market caps are in HYPE, and in USD when HYPE's
  * dollar price is known from an on-chain HYPE/USDC pool.
@@ -41,7 +49,7 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
   /** HYPE's price in dollars, from the latest HYPE/USDC trade. */
   function hypeUsd(): number | null {
     if (!usd) return null
-    const r = one(`SELECT price_hype FROM trades WHERE token = ? AND price_hype IS NOT NULL ORDER BY block DESC, log_index DESC LIMIT 1`, usd)
+    const r = one(`SELECT ${PX} price_hype FROM trades WHERE token = ? AND price_hype IS NOT NULL ORDER BY block DESC, log_index DESC LIMIT 1`, usd)
     return r?.price_hype ? 1 / (r.price_hype as number) : null
   }
 
@@ -58,18 +66,18 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
     const tokens = new Map(all('SELECT * FROM tokens').map((r) => [r.address, r]))
     const lastHype = new Map(
       all(
-        `SELECT token, price_hype FROM (SELECT token, price_hype, ROW_NUMBER() OVER (PARTITION BY token ORDER BY block DESC, log_index DESC) rn FROM trades WHERE price_hype IS NOT NULL) WHERE rn = 1`,
+        `SELECT token, price_hype FROM (SELECT token, ${PX} price_hype, ROW_NUMBER() OVER (PARTITION BY token ORDER BY block DESC, log_index DESC) rn FROM trades WHERE price_hype IS NOT NULL) WHERE rn = 1`,
       ).map((r) => [r.token, r.price_hype as number]),
     )
     const dayAgo = new Map(
       all(
-        `SELECT token, price_hype FROM (SELECT token, price_hype, ROW_NUMBER() OVER (PARTITION BY token ORDER BY block DESC, log_index DESC) rn FROM trades WHERE price_hype IS NOT NULL AND timestamp <= ?) WHERE rn = 1`,
+        `SELECT token, price_hype FROM (SELECT token, ${PX} price_hype, ROW_NUMBER() OVER (PARTITION BY token ORDER BY block DESC, log_index DESC) rn FROM trades WHERE price_hype IS NOT NULL AND timestamp <= ?) WHERE rn = 1`,
         t - DAY,
       ).map((r) => [r.token, r.price_hype as number]),
     )
     const firstHype = new Map(
       all(
-        `SELECT token, price_hype FROM (SELECT token, price_hype, ROW_NUMBER() OVER (PARTITION BY token ORDER BY block, log_index) rn FROM trades WHERE price_hype IS NOT NULL) WHERE rn = 1`,
+        `SELECT token, price_hype FROM (SELECT token, ${PX} price_hype, ROW_NUMBER() OVER (PARTITION BY token ORDER BY block, log_index) rn FROM trades WHERE price_hype IS NOT NULL) WHERE rn = 1`,
       ).map((r) => [r.token, r.price_hype as number]),
     )
     const vol = new Map(
@@ -204,7 +212,7 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
   function candles(address: string, interval: number, limit: number) {
     if (!one('SELECT 1 FROM pools WHERE token = ?', address)) return null
     const rows = all(
-      `SELECT timestamp, price_hype p, value_hype v FROM trades WHERE token = ? AND price_hype IS NOT NULL ORDER BY block, log_index`,
+      `SELECT timestamp, ${PX} p, value_hype v FROM trades WHERE token = ? AND price_hype IS NOT NULL ORDER BY block, log_index`,
       address,
     )
     const out: { t: number; o: number; h: number; l: number; c: number; v: number }[] = []
@@ -315,7 +323,7 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
           const before = Number(q.get('before') ?? 1e12)
           return json(
             all(
-              `SELECT tx, timestamp, trader, side, kind, quote_amount, token_amount, fee, sniper_fee, price, price_hype, value_hype
+              `SELECT tx, timestamp, trader, side, kind, quote_amount, token_amount, fee, sniper_fee, price, ${PX} price_hype, value_hype
                FROM trades WHERE token = ? AND timestamp < ? ORDER BY block DESC, log_index DESC LIMIT ?`,
               a,
               before,
