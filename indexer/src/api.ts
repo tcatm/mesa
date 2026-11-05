@@ -65,118 +65,178 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
     return r?.price_hype ? 1 / (r.price_hype as number) : null
   }
 
-  // A short cache: the table is recomputed at most every 5 seconds.
+  // The token table. Requests never build it: they read the last one built.
+  // It is rebuilt in the background in two layers, so no request waits on a
+  // scan of the whole trade history:
+  //  - every minute, what moves slowly: pools, names, holders, dev and bundle
+  //    shares, 6h/7d volume, and each token's price at the start of each
+  //    window and its last price (one index lookup per token, no table scan);
+  //  - every 5 seconds, the last day's trading (one scan of the last 24h) and
+  //    fresh prices for the tokens that traded in it.
+  type Slow = {
+    at: number
+    pools: Row[]
+    tokens: Map<unknown, Row>
+    images: Map<unknown, unknown>
+    first: Map<string, number>
+    last: Map<string, number>
+    at6h: Map<string, number>
+    at24h: Map<string, number>
+    at7d: Map<string, number>
+    vol: Map<unknown, Row>
+    holders: Map<unknown, number>
+    creatorBal: Map<unknown, number>
+    bundles: Map<unknown, number>
+  }
+  let slow: Slow | null = null
   let cached: { at: number; rows: Row[] } | null = null
-  function table(): Row[] {
-    if (cached && Date.now() - cached.at < 5_000) return cached.rows
+  const lastPrice = db.prepare(
+    `SELECT ${PX} p FROM trades WHERE token = ? AND price_hype IS NOT NULL ORDER BY timestamp DESC, block DESC, log_index DESC LIMIT 1`,
+  )
+  const firstPrice = db.prepare(
+    `SELECT ${PX} p FROM trades WHERE token = ? AND price_hype IS NOT NULL ORDER BY timestamp, block, log_index LIMIT 1`,
+  )
+  const priceAt = db.prepare(
+    `SELECT ${PX} p FROM trades WHERE token = ? AND timestamp <= ? AND price_hype IS NOT NULL ORDER BY timestamp DESC, block DESC, log_index DESC LIMIT 1`,
+  )
+  const val = (r: unknown) => (r as Row | undefined)?.p as number | undefined
+
+  function buildSlow(): Slow {
     const t = now()
     const ex = [...excluded]
     const pools = all(
       `SELECT p.token, p.venue, p.quote, p.creator, p.block, p.timestamp, p.initial_price, p.hook, p.pool_manager FROM pools p
        JOIN (SELECT token, MIN(block) b FROM pools GROUP BY token) f ON f.token = p.token AND f.b = p.block`,
     )
-    const tokens = new Map(all('SELECT * FROM tokens').map((r) => [r.address, r]))
-    const images = new Map(all('SELECT token, image FROM token_meta WHERE image IS NOT NULL').map((r) => [r.token, r.image]))
-    const lastHype = new Map(
-      all(
-        `SELECT token, price_hype FROM (SELECT token, ${PX} price_hype, ROW_NUMBER() OVER (PARTITION BY token ORDER BY block DESC, log_index DESC) rn FROM trades WHERE price_hype IS NOT NULL) WHERE rn = 1`,
-      ).map((r) => [r.token, r.price_hype as number]),
-    )
-    // Each token's price at the start of each window: its last trade before then.
-    const priceAt = db.prepare(
-      `SELECT ${PX} price_hype FROM trades WHERE token = ? AND timestamp <= ? AND price_hype IS NOT NULL ORDER BY timestamp DESC, block DESC, log_index DESC LIMIT 1`,
-    )
-    const firstHype = new Map(
-      all(
-        `SELECT token, price_hype FROM (SELECT token, ${PX} price_hype, ROW_NUMBER() OVER (PARTITION BY token ORDER BY block, log_index) rn FROM trades WHERE price_hype IS NOT NULL) WHERE rn = 1`,
-      ).map((r) => [r.token, r.price_hype as number]),
-    )
-    const vol = new Map(
+    const first = new Map<string, number>()
+    const last = new Map<string, number>()
+    const at6h = new Map<string, number>()
+    const at24h = new Map<string, number>()
+    const at7d = new Map<string, number>()
+    for (const a of new Set(pools.map((p) => p.token as string))) {
+      const l = val(lastPrice.get(a))
+      if (l === undefined) continue
+      last.set(a, l)
+      // A token's first price only changes when it is new.
+      const f = slow?.first.get(a) ?? val(firstPrice.get(a))
+      if (f !== undefined) first.set(a, f)
+      for (const [m, w] of [
+        [at6h, 6 * HOUR],
+        [at24h, DAY],
+        [at7d, 7 * DAY],
+      ] as const) {
+        const v = val(priceAt.get(a, t - w))
+        if (v !== undefined) m.set(a, v)
+      }
+    }
+    return {
+      at: Date.now(),
+      pools,
+      tokens: new Map(all('SELECT * FROM tokens').map((r) => [r.address, r])),
+      images: new Map(all('SELECT token, image FROM token_meta WHERE image IS NOT NULL').map((r) => [r.token, r.image])),
+      first,
+      last,
+      at6h,
+      at24h,
+      at7d,
+      vol: new Map(
+        all(
+          `SELECT token, SUM(CASE WHEN timestamp > ? THEN value_hype ELSE 0 END) v6h, SUM(value_hype) v7d
+           FROM trades WHERE timestamp > ? GROUP BY token`,
+          t - 6 * HOUR,
+          t - 7 * DAY,
+        ).map((r) => [r.token, r]),
+      ),
+      holders: new Map(
+        all(
+          `SELECT token, COUNT(*) n FROM balances WHERE balance > 1e-9 AND holder NOT IN (${placeholders(ex.length)}) GROUP BY token`,
+          ...ex,
+        ).map((r) => [r.token, r.n as number]),
+      ),
+      creatorBal: new Map(
+        all(
+          `SELECT p.token, b.balance FROM pools p JOIN (SELECT token, MIN(block) blk FROM pools GROUP BY token) f ON f.token = p.token AND f.blk = p.block
+           JOIN balances b ON b.token = p.token AND b.holder = p.creator`,
+        ).map((r) => [r.token, r.balance as number]),
+      ),
+      bundles: new Map(
+        all(
+          `SELECT tr.token, SUM(tr.token_amount) amt FROM trades tr
+           JOIN (SELECT token, MIN(block) blk, creator FROM pools GROUP BY token) f ON f.token = tr.token
+           WHERE tr.side = 'buy' AND tr.kind = 'trade' AND tr.trader IS NOT NULL AND tr.trader != f.creator AND tr.block < f.blk + ?
+           GROUP BY tr.token`,
+          BUNDLE_BLOCKS,
+        ).map((r) => [r.token, r.amt as number]),
+      ),
+    }
+  }
+
+  function build(): Row[] {
+    if (!slow || Date.now() - slow.at > 60_000) slow = buildSlow()
+    const S = slow
+    const t = now()
+    const day = new Map(
       all(
         `SELECT token,
            SUM(CASE WHEN timestamp > ? THEN value_hype ELSE 0 END) v1h,
-           SUM(CASE WHEN timestamp > ? THEN value_hype ELSE 0 END) v6h,
-           SUM(CASE WHEN timestamp > ? THEN value_hype ELSE 0 END) v,
-           SUM(value_hype) v7d,
-           SUM(CASE WHEN timestamp > ? THEN 1 ELSE 0 END) n,
-           COUNT(DISTINCT CASE WHEN timestamp > ? THEN trader END) traders,
+           SUM(value_hype) v,
+           COUNT(*) n,
+           COUNT(DISTINCT trader) traders,
            MAX(timestamp) last
          FROM trades WHERE timestamp > ? GROUP BY token`,
         t - HOUR,
-        t - 6 * HOUR,
         t - DAY,
-        t - DAY,
-        t - DAY,
-        t - 7 * DAY,
-      ).map((r) => [r.token, r]),
-    )
-    const holders = new Map(
-      all(
-        `SELECT token, COUNT(*) n FROM balances WHERE balance > 1e-9 AND holder NOT IN (${placeholders(ex.length)}) GROUP BY token`,
-        ...ex,
-      ).map((r) => [r.token, r.n as number]),
-    )
-    const creatorBal = new Map(
-      all(
-        `SELECT p.token, b.balance FROM pools p JOIN (SELECT token, MIN(block) blk FROM pools GROUP BY token) f ON f.token = p.token AND f.blk = p.block
-         JOIN balances b ON b.token = p.token AND b.holder = p.creator`,
-      ).map((r) => [r.token, r.balance as number]),
-    )
-    const bundles = new Map(
-      all(
-        `SELECT tr.token, SUM(tr.token_amount) amt FROM trades tr
-         JOIN (SELECT token, MIN(block) blk, creator FROM pools GROUP BY token) f ON f.token = tr.token
-         WHERE tr.side = 'buy' AND tr.kind = 'trade' AND tr.trader IS NOT NULL AND tr.trader != f.creator AND tr.block < f.blk + ?
-         GROUP BY tr.token`,
-        BUNDLE_BLOCKS,
-      ).map((r) => [r.token, r.amt as number]),
+      ).map((r) => [r.token as string, r]),
     )
     const usdRate = hypeUsd()
     const rows: Row[] = []
     const seen = new Set<string>()
-    for (const p of pools) {
+    for (const p of S.pools) {
       const a = p.token as string
       // A token whose first two pools share a block is listed once.
       if (notListed.has(a) || seen.has(a)) continue
       seen.add(a)
-      const tk = tokens.get(a)
+      const tk = S.tokens.get(a)
       const supply = (tk?.supply as number | null) ?? null
-      const price = lastHype.get(a) ?? (hype.has(p.quote as string) ? (p.initial_price as number) : null)
-      const v = vol.get(a)
-      const first = firstHype.get(a) ?? price
-      const change = (w: number) => {
-        if (!price) return 0
-        const launched = (p.timestamp as number) > t - w
-        const b = launched ? first : ((priceAt.get(a, t - w) as Row | undefined)?.price_hype as number | undefined) ?? first
-        return b ? (price / b - 1) * 100 : 0
+      const v = day.get(a)
+      // Tokens that traded today get a fresh price; the rest haven't moved.
+      const live = v ? val(lastPrice.get(a)) : undefined
+      const price = live ?? S.last.get(a) ?? (hype.has(p.quote as string) ? (p.initial_price as number) : null)
+      const first = S.first.get(a) ?? price
+      const startOf = (w: number, at?: number) => {
+        if ((p.timestamp as number) > t - w) return first
+        return at ?? first
       }
+      const pct = (b: number | null | undefined) => (price && b ? (price / b - 1) * 100 : 0)
+      const at1h = v && (v.last as number) > t - HOUR ? val(priceAt.get(a, t - HOUR)) : price ?? undefined
+      const slowVol = S.vol.get(a)
       const trades24h = (v?.n as number) ?? 0
       const traders24h = (v?.traders as number) ?? 0
-      const holderCount = holders.get(a) ?? 0
+      const holderCount = S.holders.get(a) ?? 0
       const mcap = price !== null && supply !== null ? price * supply : null
       rows.push({
         address: a,
-        image: (images.get(a) as string | undefined) ?? null,
+        image: (S.images.get(a) as string | undefined) ?? null,
         name: tk?.name ?? null,
         symbol: tk?.symbol ?? null,
         venue: venueOf(p.hook as string, p.pool_manager as string),
         hook: p.hook,
         quote: p.quote,
-        quoteSymbol: hype.has(p.quote as string) ? 'HYPE' : ((tokens.get(p.quote)?.symbol as string) ?? null),
+        quoteSymbol: hype.has(p.quote as string) ? 'HYPE' : ((S.tokens.get(p.quote)?.symbol as string) ?? null),
         creator: p.creator,
         launchedAt: p.timestamp,
         priceHype: price,
         priceUsd: price !== null && usdRate ? price * usdRate : null,
         marketCapHype: mcap,
         marketCapUsd: mcap !== null && usdRate ? mcap * usdRate : null,
-        change1h: change(HOUR),
-        change6h: change(6 * HOUR),
-        change24h: change(DAY),
-        change7d: change(7 * DAY),
+        change1h: pct(startOf(HOUR, at1h)),
+        change6h: pct(startOf(6 * HOUR, S.at6h.get(a))),
+        change24h: pct(startOf(DAY, S.at24h.get(a))),
+        change7d: pct(startOf(7 * DAY, S.at7d.get(a))),
         volume1hHype: (v?.v1h as number) ?? 0,
-        volume6hHype: (v?.v6h as number) ?? 0,
+        volume6hHype: (slowVol?.v6h as number) ?? 0,
         volume24hHype: (v?.v as number) ?? 0,
-        volume7dHype: (v?.v7d as number) ?? 0,
+        volume7dHype: Math.max((slowVol?.v7d as number) ?? 0, (v?.v as number) ?? 0),
         trades24h,
         traders24h,
         lastTradeAt: (v?.last as number) ?? null,
@@ -184,12 +244,28 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
         // Wash trading: lots of trades between a handful of wallets.
         spam: (trades24h >= 100 && traders24h <= 5) || (holderCount < 3 && trades24h < 3),
         supply,
-        devPct: supply ? ((creatorBal.get(a) ?? 0) / supply) * 100 : null,
-        bundlePct: supply ? ((bundles.get(a) ?? 0) / supply) * 100 : null,
+        devPct: supply ? ((S.creatorBal.get(a) ?? 0) / supply) * 100 : null,
+        bundlePct: supply ? ((S.bundles.get(a) ?? 0) / supply) * 100 : null,
       })
     }
-    cached = { at: Date.now(), rows }
     return rows
+  }
+
+  function refresh() {
+    const started = Date.now()
+    try {
+      cached = { at: Date.now(), rows: build() }
+    } catch (e) {
+      console.error(JSON.stringify({ tableError: e instanceof Error ? e.message : String(e) }))
+    }
+    const ms = Date.now() - started
+    if (ms > 1_000) console.log(JSON.stringify({ tableMs: ms }))
+  }
+  setInterval(refresh, 5_000).unref()
+
+  function table(): Row[] {
+    if (!cached) refresh()
+    return cached?.rows ?? []
   }
 
   function tokenDetail(address: string) {
