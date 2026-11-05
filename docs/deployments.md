@@ -136,3 +136,24 @@ and burned; builder and creator fees claimed; protocol fees collected and
 425,985 TEST bought and burned; everything sold back. Bots started trading
 TEST2 within minutes. The hook's HYPE claims matched exactly what it owed
 afterwards. Cost: about 0.034 HYPE.
+
+## For the next deployment
+
+Not applied to the live contracts: changing even a comment changes the
+metadata hash compiled into the bytecode, so the deployed contracts would no
+longer verify against this source. Do these before the next deployment
+(a factory v2, the shielded pool, any new contract):
+
+- Put this header at the top of `MesaToken.sol` (and the other new contracts),
+  so every launched token shows it on every explorer:
+
+  ```solidity
+  //   ███╗   ███╗███████╗███████╗ █████╗
+  //   ████╗ ████║██╔════╝██╔════╝██╔══██╗
+  //   ██╔████╔██║█████╗  ███████╗███████║
+  //   ██║╚██╔╝██║██╔══╝  ╚════██║██╔══██║
+  //   ██║ ╚═╝ ██║███████╗███████║██║  ██║
+  //   ╚═╝     ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝
+  //   Launched on Mesa · https://mesa.cx
+  //   The launchpad for builders on Elysium
+  ```
