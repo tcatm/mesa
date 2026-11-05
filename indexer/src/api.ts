@@ -200,6 +200,30 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
    *   realized   = HYPE from sells - tokens sold x average buy price
    *   unrealized = tokens held x (current price - average buy price)
    */
+  // The explorer: what Mesa knows about a transaction, and a wallet's activity.
+  function meta(token: string) {
+    const t = table().find((r) => r.address === token)
+    return t ? { symbol: t.symbol, name: t.name, image: t.image, venue: t.venue } : { symbol: null, name: null, image: null, venue: null }
+  }
+  function txInfo(hash: string) {
+    const trades = all(
+      `SELECT tx, log_index, token, timestamp, trader, side, kind, quote_amount, token_amount, fee, sniper_fee, value_hype FROM trades WHERE tx = ? ORDER BY log_index`,
+      hash,
+    ).map((r) => ({ ...r, ...meta(r.token as string) }))
+    const launches = all(`SELECT token, venue, creator, timestamp FROM pools WHERE tx = ?`, hash).map((r) => ({ ...r, ...meta(r.token as string) }))
+    const burns = all(`SELECT hype_in, mesa_burned, timestamp FROM burns WHERE tx = ?`, hash)
+    return { trades, launches, burns }
+  }
+  function activity(address: string, limit: number) {
+    const trades = all(
+      `SELECT tx, token, timestamp, side, kind, quote_amount, token_amount, value_hype FROM trades WHERE trader = ? ORDER BY timestamp DESC, log_index DESC LIMIT ?`,
+      address,
+      limit,
+    ).map((r) => ({ ...r, ...meta(r.token as string) }))
+    const launches = all(`SELECT token, venue, tx, timestamp FROM pools WHERE creator = ? ORDER BY timestamp DESC LIMIT 100`, address).map((r) => ({ ...r, ...meta(r.token as string) }))
+    return { trades, launches }
+  }
+
   function wallet(address: string) {
     const byToken = new Map(table().map((r) => [r.address as string, r]))
     const held = all('SELECT token, balance FROM balances WHERE holder = ? AND balance > 1e-9', address)
@@ -388,6 +412,16 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
       if (parts[0] === 'mesa' && parts.length === 1) return json(mesaBurns())
       if (parts[0] === 'venues') return json(venues())
       if (parts[0] === 'bridge' && parts.length === 1) return json(bridgeStats(db))
+      if (parts[0] === 'tx' && parts[1] && parts.length === 2) {
+        const h = parts[1].toLowerCase()
+        if (!/^0x[0-9a-f]{64}$/.test(h)) return json({ error: 'bad hash' }, 400)
+        return json(txInfo(h))
+      }
+      if (parts[0] === 'wallets' && parts[1] && parts[2] === 'activity' && parts.length === 3) {
+        const a = parts[1].toLowerCase()
+        if (!/^0x[0-9a-f]{40}$/.test(a)) return json({ error: 'bad address' }, 400)
+        return json(activity(a, num('limit', 50, 500)))
+      }
       if (parts[0] === 'wallets' && parts[1] && parts.length === 2) {
         const a = parts[1].toLowerCase()
         if (!/^0x[0-9a-f]{40}$/.test(a)) return json({ error: 'bad address' }, 400)
