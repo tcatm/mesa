@@ -85,3 +85,33 @@ Outbox, deploy a new MesaBridge (or claim on the Outbox directly; anyone may).
 ## Elysium mainnet (99901)
 
 Mesa itself is not deployed.
+
+### Rehearsal on mainnet (throwaway, not Mesa)
+
+The launch v1 code, deployed 2026-11-05 at separate addresses with every role
+held by a throwaway wallet (`0x2b8E20eA27D1Eeed651D86ee836C5916a4ED3b95`), on
+the official PoolManager, then exercised with `script/Rehearsal.s.sol`
+(`MAINNET_REHEARSAL=true`). Its tokens are named TEST and TEST2. It is not
+used for anything else.
+
+Before Elysium's public sequencer opened, each transaction was signed locally
+and posted with `Inbox.sendL2Message` on HyperEVM, paid by the relayer.
+
+| Contract | Address |
+|---|---|
+| MesaTokenFactory | `0xa18e7d950E02a3284DBBf92759813A4f6B70f0AA` |
+| Create2Deployer | `0xc4D1f3478107b3a8ebEb06f00E4807Da1dEc8082` |
+| MesaHook | `0x83C7C5120Fa2c8D2d87e49691331F555397c2Aec` |
+| BuybackBurner | `0xE207ec264C40bE27C823422C532beb8b25686806` |
+| TEST (genesis, $MESA's settings) | `0xc4bC87e019921f1A347A054218CF6ddA3EAa138b` |
+| TEST2 (reward token, builder fee, holders and buyback split) | `0xd538A8333256578f1BFdD297F9629a1005a08165` |
+| TEST2 payout | `0x9e9608b5F4D2DadF531bCa0d2FC61dE6bE245468` |
+
+All 3 deploy and 27 rehearsal transactions succeeded: TEST launched with
+$MESA's planned settings; TEST2 at 10% through a 0.5% builder, creator fees
+split between holders and buyback; every swap kind and four round trips; a
+router buy; holders paid 0.0144 HYPE and claimed; 428,478 TEST2 bought back
+and burned; builder and creator fees claimed; protocol fees collected and
+425,985 TEST bought and burned; everything sold back. Bots started trading
+TEST2 within minutes. The hook's HYPE claims matched exactly what it owed
+afterwards. Cost: about 0.034 HYPE.
