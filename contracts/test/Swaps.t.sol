@@ -14,6 +14,7 @@ import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
 import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 
 import {MesaHook} from "../src/MesaHook.sol";
+import {MesaTokenFactory} from "../src/MesaTokenFactory.sol";
 import {MesaToken} from "../src/MesaToken.sol";
 import {BuybackBurner} from "../src/BuybackBurner.sol";
 
@@ -91,7 +92,15 @@ contract SwapsTest is Test, Deployers {
         deployCodeTo(
             "out/MesaHook.sol/MesaHook.json",
             abi.encode(
-                manager, uint16(7_000), INITIAL_TICK, genesis, makeAddr("o"), makeAddr("k"), 10 ether, makeAddr("qa")
+                manager,
+                uint16(7_000),
+                INITIAL_TICK,
+                genesis,
+                makeAddr("o"),
+                makeAddr("k"),
+                10 ether,
+                makeAddr("qa"),
+                new MesaTokenFactory()
             ),
             at
         );
@@ -108,7 +117,7 @@ contract SwapsTest is Test, Deployers {
         view
         returns (MesaHook.LaunchParams memory)
     {
-        return MesaHook.LaunchParams("T", "T", "", feeTo, b, s, sn, secs, cap);
+        return MesaHook.LaunchParams("T", "T", "", feeTo, b, sn, secs, cap, address(0), 0, "");
     }
 
     function claims() internal view returns (uint256) {
@@ -144,7 +153,7 @@ contract SwapsTest is Test, Deployers {
         // later exact-output buy of a quarter of that still exists in the pool.
         hypeIn = uint96(bound(hypeIn, 1e9, 60 ether));
         buyFee = uint16(bound(buyFee, 100, 1_000));
-        sellFee = uint16(bound(sellFee, 100, 1_000));
+        sellFee = buyFee; // one fee for buys and sells
         sniper = uint16(bound(sniper, 0, 3_000));
         elapsed = uint32(bound(elapsed, 0, 900));
         uint256 t0 = block.timestamp;
@@ -203,13 +212,13 @@ contract SwapsTest is Test, Deployers {
     /// PartialFill rather than charging on the requested amount.
     function test_exactOutSellBeyondPoolHypeIsPartialFill() public {
         vm.prank(alice);
-        (address tok, PoolKey memory k) = hook.launch(params(100, 1_000, 0, 0, 10_000));
-        swap(alice, k, sp(true, -10 ether), 10 ether);
+        (address tok, PoolKey memory k) = hook.launch(params(100, 100, 0, 0, 10_000));
+        swap(alice, k, sp(true, -10 ether), 10 ether); // the pool now holds 9.9 HYPE
         deal(tok, alice, SUPPLY);
         vm.startPrank(alice);
         MesaToken(tok).approve(address(swapRouter), type(uint256).max);
         (bool ok, bytes memory err) =
-            address(swapRouter).call(abi.encodeCall(PoolSwapTest.swap, (k, sp(false, int256(9 ether)), settings, "")));
+            address(swapRouter).call(abi.encodeCall(PoolSwapTest.swap, (k, sp(false, int256(9.9 ether)), settings, "")));
         vm.stopPrank();
         assertFalse(ok);
         assertGt(err.length, 4);

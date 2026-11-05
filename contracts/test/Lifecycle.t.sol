@@ -13,6 +13,7 @@ import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
 import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 
 import {MesaHook} from "../src/MesaHook.sol";
+import {MesaTokenFactory} from "../src/MesaTokenFactory.sol";
 import {MesaToken} from "../src/MesaToken.sol";
 
 /// A whole launch: a declared dev buy, a crowd buying through the snipe
@@ -43,7 +44,15 @@ contract LifecycleTest is Test, Deployers {
         deployCodeTo(
             "out/MesaHook.sol/MesaHook.json",
             abi.encode(
-                manager, uint16(7_000), INITIAL_TICK, creator, makeAddr("o"), makeAddr("k"), 10 ether, makeAddr("qa")
+                manager,
+                uint16(7_000),
+                INITIAL_TICK,
+                creator,
+                makeAddr("o"),
+                makeAddr("k"),
+                10 ether,
+                makeAddr("qa"),
+                new MesaTokenFactory()
             ),
             at
         );
@@ -85,7 +94,7 @@ contract LifecycleTest is Test, Deployers {
         uint256 t0 = block.timestamp;
         vm.prank(creator);
         (address tok, PoolKey memory k) = hook.launch{value: 1 ether}(
-            MesaHook.LaunchParams("Lifecycle", "LIFE", "", feeTo, 100, 100, 1_500, 300, 100)
+            MesaHook.LaunchParams("Lifecycle", "LIFE", "", feeTo, 100, 1_500, 300, 100, address(0), 0, "")
         );
         token = MesaToken(tok);
         pool = k;

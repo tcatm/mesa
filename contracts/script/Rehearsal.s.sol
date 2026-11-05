@@ -36,11 +36,12 @@ contract Rehearsal is Script {
 
         // 1. $MESA: 15% sniper surcharge over 5 minutes, 1% cap per transaction, 0.01 HYPE dev buy.
         (address mesa,) = hook.launch{value: 0.01 ether}(
-            MesaHook.LaunchParams("Mesa", "MESA", "ipfs://mesa-rehearsal", me, 100, 100, 1_500, 300, 100)
+            MesaHook.LaunchParams("Mesa", "MESA", "ipfs://mesa-rehearsal", me, 100, 1_500, 300, 100, address(0), 0, "")
         );
         // 2. A second token, no fairness settings, 0.005 HYPE dev buy.
-        (address t2, PoolKey memory k) =
-            hook.launch{value: 0.005 ether}(MesaHook.LaunchParams("Rehearsal", "RHSL", "", me, 200, 200, 0, 0, 10_000));
+        (address t2, PoolKey memory k) = hook.launch{value: 0.005 ether}(
+            MesaHook.LaunchParams("Rehearsal", "RHSL", "", me, 200, 0, 0, 10_000, address(0), 0, "")
+        );
         MesaToken token = MesaToken(t2);
         token.approve(address(swapper), type(uint256).max);
 

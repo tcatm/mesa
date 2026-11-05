@@ -8,6 +8,7 @@ import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "v4-core/src/types/Currency.sol";
 
 import {MesaHook} from "../src/MesaHook.sol";
+import {MesaTokenFactory} from "../src/MesaTokenFactory.sol";
 import {MesaToken} from "../src/MesaToken.sol";
 
 /// ABI of v4-periphery's V4Router single-pool params at commit a7af5b34.
@@ -71,7 +72,15 @@ contract PeripheryTest is Test, Deployers {
         deployCodeTo(
             "out/MesaHook.sol/MesaHook.json",
             abi.encode(
-                manager, uint16(7_000), int24(173_200), genesis, makeAddr("o"), makeAddr("k"), 10 ether, makeAddr("qa")
+                manager,
+                uint16(7_000),
+                int24(173_200),
+                genesis,
+                makeAddr("o"),
+                makeAddr("k"),
+                10 ether,
+                makeAddr("qa"),
+                new MesaTokenFactory()
             ),
             at
         );
@@ -84,7 +93,7 @@ contract PeripheryTest is Test, Deployers {
     }
 
     function params(uint16 sniper, uint32 secs, uint16 cap) internal view returns (MesaHook.LaunchParams memory) {
-        return MesaHook.LaunchParams("Token", "TKN", "", feeTo, 100, 200, sniper, secs, cap);
+        return MesaHook.LaunchParams("Token", "TKN", "", feeTo, 100, sniper, secs, cap, address(0), 0, "");
     }
 
     function launch(uint16 sniper, uint32 secs, uint16 cap) internal returns (MesaToken t, PoolKey memory k) {

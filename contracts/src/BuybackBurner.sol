@@ -78,10 +78,10 @@ contract BuybackBurner is IUnlockCallback {
         keeper = keeper_;
     }
 
-    /// @dev Native HYPE arrives from the PoolManager when fees are claimed.
-    receive() external payable {
-        if (msg.sender != address(poolManager)) revert NotPoolManager();
-    }
+    /// @dev Native HYPE arrives from the PoolManager when fees are claimed,
+    /// and from anyone else who sends it (future Mesa contracts, donations):
+    /// it can only ever be spent on buying and burning $MESA.
+    receive() external payable {}
 
     /// @notice The token every buyback buys and burns.
     function mesa() public view returns (address token) {
