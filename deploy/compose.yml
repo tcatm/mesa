@@ -59,6 +59,19 @@ services:
       READ_PER_IP_PER_MIN: "2400"
       PORT: "8545"
 
+  # $MESA's buyback keeper: spends the BuybackBurner's HYPE on $MESA in small
+  # chunks and burns it (relay/src/keeper.ts). Sends through the relay.
+  keeper:
+    build: ../relay
+    restart: unless-stopped
+    command: ["node", "dist/keeper.js"]
+    environment:
+      KEEPER_KEY: ${KEEPER_KEY}
+      RPC: http://relay:8545
+      READ_RPC: http://elysium:8547
+    depends_on:
+      - relay
+
   indexer:
     build: ../indexer
     restart: unless-stopped
