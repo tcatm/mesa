@@ -21,6 +21,13 @@ api.mesa.cx {
 	handle /hyperevm/* {
 		reverse_proxy 127.0.0.1:8085
 	}
+	# Relay for the bridge's any-chain deposits, with Mesa's key added server-side.
+	handle /relay/* {
+		request_body {
+			max_size 32KB
+		}
+		reverse_proxy 127.0.0.1:8085
+	}
 	# Token images, checked and cached, so the site loads images from here only.
 	handle /img {
 		reverse_proxy 127.0.0.1:8085

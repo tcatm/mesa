@@ -18,11 +18,13 @@
  *   /hyperevm/tokens/:address/trades?cursor=<opaque>
  *   /img?u=<https url>   a token image, checked and cached (see images.ts)
  *   POST /upload, GET /media/<file>   images uploaded at launch (see media.ts)
+ *   /relay/...           Relay for any-chain deposits, with Mesa's key (see relay.ts)
  *   /health
  */
 import { createServer, type ServerResponse } from 'node:http'
 import { image, ImageError, imageHeaders } from './images.js'
 import { media, MediaError, upload } from './media.js'
+import { relay } from './relay.js'
 
 const KEY = process.env.CODEX_API_KEY
 if (!KEY) throw new Error('CODEX_API_KEY is required')
@@ -327,6 +329,11 @@ createServer((req, res) => {
   }
   const ip = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? ''
   const url = new URL(req.url ?? '/', 'http://local')
+  if (url.pathname.startsWith('/relay/')) {
+    if (!allowed(ip)) return send(res, 429, { error: 'too many requests' })
+    relay(req, res, url)
+    return
+  }
   if (url.pathname === '/upload') {
     if (req.method !== 'POST') return send(res, 405, { error: 'POST only' })
     upload(req, ip).then(
