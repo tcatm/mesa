@@ -37,6 +37,7 @@ const run = async (f: () => Promise<unknown>) => {
   }
 };
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/).describe("A 0x address");
+const token = z.string().min(1).describe('A token address, or its ticker like "$MESA" (resolves to the most-held token with that ticker)');
 
 // ------------------------------------------------------------ read
 
@@ -57,22 +58,22 @@ server.registerTool(
 );
 server.registerTool(
   "get_token",
-  { title: "Token details", description: "One token: price, market cap, volume, holders, launch settings and forensics (dev holdings, bundles, top holders).", inputSchema: { token: address } },
+  { title: "Token details", description: "One token: price, market cap, volume, holders, launch settings and forensics (dev holdings, bundles, top holders).", inputSchema: { token: token } },
   (a) => run(() => mesa.token(a.token)),
 );
 server.registerTool(
   "get_trades",
-  { title: "Recent trades", description: "A token's latest trades, newest first.", inputSchema: { token: address, limit: z.number().int().min(1).max(200).optional() } },
+  { title: "Recent trades", description: "A token's latest trades, newest first.", inputSchema: { token: token, limit: z.number().int().min(1).max(200).optional() } },
   (a) => run(() => mesa.trades(a.token, a.limit ?? 30)),
 );
 server.registerTool(
   "get_holders",
-  { title: "Top holders", description: "A token's largest holders, with their share of supply.", inputSchema: { token: address, limit: z.number().int().min(1).max(200).optional() } },
+  { title: "Top holders", description: "A token's largest holders, with their share of supply.", inputSchema: { token: token, limit: z.number().int().min(1).max(200).optional() } },
   (a) => run(() => mesa.holders(a.token, a.limit ?? 20)),
 );
 server.registerTool(
   "get_candles",
-  { title: "Price candles", description: "OHLC candles in HYPE. interval is in seconds (60, 300, 900, 3600, 14400, 86400).", inputSchema: { token: address, interval: z.number().int().optional(), limit: z.number().int().max(1000).optional() } },
+  { title: "Price candles", description: "OHLC candles in HYPE. interval is in seconds (60, 300, 900, 3600, 14400, 86400).", inputSchema: { token: token, interval: z.number().int().optional(), limit: z.number().int().max(1000).optional() } },
   (a) => run(() => mesa.candles(a.token, a.interval ?? 300, a.limit ?? 100)),
 );
 server.registerTool(
@@ -82,7 +83,7 @@ server.registerTool(
 );
 server.registerTool(
   "get_balance",
-  { title: "Balance", description: "HYPE balance, and optionally one token's balance, for this agent's wallet or any address.", inputSchema: { token: address.optional(), wallet: address.optional() } },
+  { title: "Balance", description: "HYPE balance, and optionally one token's balance, for this agent's wallet or any address.", inputSchema: { token: token.optional(), wallet: address.optional() } },
   (a) => run(() => mesa.balance(a.token, a.wallet)),
 );
 server.registerTool(
@@ -102,7 +103,7 @@ server.registerTool(
 );
 server.registerTool(
   "quote",
-  { title: "Quote a trade", description: "What a buy (amount in HYPE) or sell (amount in tokens) would return, before trading.", inputSchema: { token: address, side: z.enum(["buy", "sell"]), amount: z.string().describe('e.g. "0.1"') } },
+  { title: "Quote a trade", description: "What a buy (amount in HYPE) or sell (amount in tokens) would return, before trading.", inputSchema: { token: token, side: z.enum(["buy", "sell"]), amount: z.string().describe('e.g. "0.1"') } },
   (a) => run(() => mesa.quote(a.token, a.side, a.amount)),
 );
 server.registerTool(
@@ -118,12 +119,12 @@ const guard = `Spends real HYPE from the agent wallet${writes ? ` ${mesa.address
 
 server.registerTool(
   "buy",
-  { title: "Buy a token", description: `Buy a token with HYPE. ${guard}`, inputSchema: { token: address, hype: z.string().describe('HYPE to spend, e.g. "0.1"'), slippageBps: z.number().int().min(10).max(5000).optional() } },
+  { title: "Buy a token", description: `Buy a token with HYPE. ${guard}`, inputSchema: { token: token, hype: z.string().describe('HYPE to spend, e.g. "0.1"'), slippageBps: z.number().int().min(10).max(5000).optional() } },
   (a) => run(() => mesa.buy(a.token, a.hype, a.slippageBps)),
 );
 server.registerTool(
   "sell",
-  { title: "Sell a token", description: `Sell a token for HYPE: an amount, "all", or a percentage like "50%". ${guard}`, inputSchema: { token: address, amount: z.string(), slippageBps: z.number().int().min(10).max(5000).optional() } },
+  { title: "Sell a token", description: `Sell a token for HYPE: an amount, "all", or a percentage like "50%". ${guard}`, inputSchema: { token: token, amount: z.string(), slippageBps: z.number().int().min(10).max(5000).optional() } },
   (a) => run(() => mesa.sell(a.token, a.amount, a.slippageBps)),
 );
 server.registerTool(

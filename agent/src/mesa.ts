@@ -117,6 +117,25 @@ export class Mesa {
 
   // ------------------------------------------------------------ reading
 
+  /**
+   * A token by address, or by ticker ("$MESA" or "MESA"). Tickers aren't
+   * unique on Elysium, so a ticker resolves to the token with that exact
+   * symbol held by the most wallets, the one the terminal marks OG.
+   */
+  async resolve(token: string): Promise<Address> {
+    const t = token.trim();
+    if (/^0x[0-9a-fA-F]{40}$/.test(t)) return t as Address;
+    const sym = t.replace(/^\$/, "").toLowerCase();
+    if (!sym) throw new Error("Give a token address or ticker.");
+    const { tokens } = await this.tokens({ query: sym, limit: 100 });
+    const exact = tokens
+      .filter((x) => String(x["symbol"] ?? "").toLowerCase() === sym)
+      .sort((a, b) => Number(b["holders"] ?? 0) - Number(a["holders"] ?? 0));
+    const hit = exact[0];
+    if (!hit) throw new Error(`No token with the ticker $${sym.toUpperCase()}. Use its address.`);
+    return hit["address"] as Address;
+  }
+
   /** Tokens on every Elysium launchpad, sorted. */
   tokens(o: { sort?: Sort; window?: "1h" | "6h" | "24h" | "7d"; venue?: string; query?: string; limit?: number } = {}) {
     const q = new URLSearchParams({ sort: o.sort ?? "trending", window: o.window ?? "24h", limit: String(Math.min(o.limit ?? 20, 200)) });
@@ -125,17 +144,21 @@ export class Mesa {
     return get<{ total: number; tokens: Record<string, unknown>[] }>(`/tokens?${q}`);
   }
   /** One token: price, market cap, volume, holders, launch settings and forensics. */
-  token(address: string) {
+  async token(address: string) {
+    address = await this.resolve(address);
     return get<Record<string, unknown> & { pools: ApiPool[]; symbol: string | null }>(`/tokens/${addr(address).toLowerCase()}`);
   }
-  trades(address: string, limit = 50) {
+  async trades(address: string, limit = 50) {
+    address = await this.resolve(address);
     return get<Record<string, unknown>[]>(`/tokens/${addr(address).toLowerCase()}/trades?limit=${Math.min(limit, 500)}`);
   }
-  holders(address: string, limit = 25) {
+  async holders(address: string, limit = 25) {
+    address = await this.resolve(address);
     return get<{ address: string; balance: number; pct: number | null }[]>(`/tokens/${addr(address).toLowerCase()}/holders?limit=${Math.min(limit, 1000)}`);
   }
   /** OHLC candles in HYPE; interval in seconds. */
-  candles(address: string, interval = 300, limit = 200) {
+  async candles(address: string, interval = 300, limit = 200) {
+    address = await this.resolve(address);
     return get<Record<string, unknown>>(`/tokens/${addr(address).toLowerCase()}/candles?interval=${interval}&limit=${limit}`);
   }
   /** A wallet's token holdings and profit and loss. */
@@ -168,7 +191,7 @@ export class Mesa {
     const hype = await elysiumClient().getBalance({ address: who });
     const out: Record<string, string> = { address: who, HYPE: formatEther(hype) };
     if (token) {
-      const t = addr(token);
+      const t = await this.resolve(token);
       const [bal, dec, info] = await Promise.all([tokenBalance(t, who), tokenDecimals(t), this.token(t).catch(() => null)]);
       out[info?.symbol ? `$${info.symbol}` : t] = formatUnits(bal, dec);
     }
@@ -177,7 +200,7 @@ export class Mesa {
 
   /** A price for a buy (HYPE in) or a sell (tokens in), before trading. */
   async quote(token: string, side: "buy" | "sell", amount: string) {
-    const t = addr(token);
+    const t = await this.resolve(token);
     const info = await this.token(t);
     const m = marketOf(t, info.pools);
     if (!m) throw new Error("No HYPE pool Mesa can route for this token.");
@@ -223,7 +246,7 @@ export class Mesa {
   /** Buy a token with `hype` HYPE. */
   async buy(token: string, hype: string, slippageBps = this.slippageBps) {
     this.cap(Number(hype));
-    const t = addr(token);
+    const t = await this.resolve(token);
     const info = await this.token(t);
     const m = marketOf(t, info.pools);
     if (!m) throw new Error("No HYPE pool Mesa can route for this token.");
@@ -236,7 +259,7 @@ export class Mesa {
   /** Sell `amount` of a token, or "all", or a percentage like "50%". */
   async sell(token: string, amount: string, slippageBps = this.slippageBps) {
     const { wallet, account } = this.need();
-    const t = addr(token);
+    const t = await this.resolve(token);
     const info = await this.token(t);
     const m = marketOf(t, info.pools);
     if (!m) throw new Error("No HYPE pool Mesa can route for this token.");
@@ -333,7 +356,7 @@ export class Mesa {
     if (!MESA_HOOK) throw new Error("Mesa isn't deployed on this network.");
     return this.send({
       to: MESA_HOOK,
-      data: encodeFunctionData({ abi: hookAbi, functionName: "setFeeRecipient", args: [addr(token), addr(next)] }),
+      data: encodeFunctionData({ abi: hookAbi, functionName: "setFeeRecipient", args: [await this.resolve(token), addr(next)] }),
       value: 0n,
     });
   }

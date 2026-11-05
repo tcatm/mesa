@@ -9,7 +9,7 @@ const HELP = `mesa: Elysium markets and Mesa's launchpad from a terminal
 
 Reading (no setup):
   mesa tokens [--sort trending|volume|gainers|mcap|new] [--launchpad Mesa] [--limit 20]
-  mesa token <address>
+  mesa token <address|$TICKER>
   mesa trades <address> [--limit 20]
   mesa holders <address>
   mesa stats
