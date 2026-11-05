@@ -6,7 +6,7 @@ at 259, every slanted edge at a slope of 3/7 (240 across over the full
 height), mesas 182 wide. Each mesa's right shoulder meets the next shape's
 left edge exactly, and the peak's right side continues the second mesa's.
 Traced from the original artwork (brand/source/original.jpg).
-Colours: black, white, the site's sandstone and night, and mint.
+Colours: black, white, the site's sandstone and night, and mint on charcoal.
 
     python3 brand/build.py        # writes brand/svg/*.svg
 """
@@ -14,7 +14,8 @@ from pathlib import Path
 
 SANDSTONE = "#EEA155"  # the site's accent, oklch(0.77 0.13 63)
 NIGHT = "#0F0D0C"      # the site's background, oklch(0.16 0.004 60)
-MINT = "#97FCE4"       # secondary accent
+MINT = "#B6FFEE"       # secondary accent, as on the X avatar
+CHARCOAL = "#1B1B1B"   # the dark that mint sits on
 BLACK, WHITE = "#000000", "#FFFFFF"
 
 # The mark, in a 1066 x 560 box.
@@ -122,8 +123,8 @@ VARIANTS = {
     "mesa-badge-white": badge_solid(WHITE, BLACK),
     "mesa-badge-night": badge_solid(NIGHT, SANDSTONE),
     "mesa-badge-sandstone": badge_solid(SANDSTONE, NIGHT),
-    "mesa-badge-night-mint": badge_solid(NIGHT, MINT),
-    "mesa-badge-mint": badge_solid(MINT, NIGHT),
+    "mesa-badge-night-mint": badge_solid(CHARCOAL, MINT),
+    "mesa-badge-mint": badge_solid(MINT, CHARCOAL),
     # The wide badge: rounded rectangle, M knocked out to its bottom edge.
     "mesa-wide-knockout": wide_knockout("currentColor"),
     "mesa-wide-knockout-black": wide_knockout(BLACK),
@@ -135,14 +136,14 @@ VARIANTS = {
     "mesa-wide-white": wide_solid(WHITE, BLACK),
     "mesa-wide-night": wide_solid(NIGHT, SANDSTONE),
     "mesa-wide-sandstone": wide_solid(SANDSTONE, NIGHT),
-    "mesa-wide-night-mint": wide_solid(NIGHT, MINT),
-    "mesa-wide-mint": wide_solid(MINT, NIGHT),
+    "mesa-wide-night-mint": wide_solid(CHARCOAL, MINT),
+    "mesa-wide-mint": wide_solid(MINT, CHARCOAL),
     # Full-bleed squares for app icons, avatars and favicons.
     "mesa-icon-black": icon(BLACK, WHITE),
     "mesa-icon-white": icon(WHITE, BLACK),
     "mesa-icon-night": icon(NIGHT, SANDSTONE),
-    "mesa-icon-night-mint": icon(NIGHT, MINT),
-    "mesa-icon-mint": icon(MINT, NIGHT),
+    "mesa-icon-night-mint": icon(CHARCOAL, MINT),
+    "mesa-icon-mint": icon(MINT, CHARCOAL),
 }
 
 if __name__ == "__main__":
