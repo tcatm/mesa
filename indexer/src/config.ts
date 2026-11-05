@@ -39,8 +39,9 @@ export const networks: Record<string, Network> = {
       { address: '0x5fb015a49f5b35073f9ce01c2adb287a75f89600', name: 'ElysPump PoolManager', venue: 'ElysPump' },
       // Other launchpads' own PoolManagers, found by their Initialize events.
       { address: '0xb308b5df891c300a5f5a5b8fdbc30108ba842490', name: 'Kleos PoolManager', venue: 'Kleos', backfill: true },
+      // BOXA's own PoolManager: the BOXA token itself launched here.
+      { address: '0x06c63714fbf1f5753017123e2fcfdede4540b2c4', name: 'BOXA PoolManager', venue: 'BOXA', backfill: true },
       ...[
-        '0x06c63714fbf1f5753017123e2fcfdede4540b2c4',
         '0x5c54a7293d96b11a29a0256ee8dfdbc3059637da',
         '0x3564d7defdb26abe3f0953ee57d93953ec94fa25',
         '0xeef19ba12957efaa08a2769a47660c9665b972df',

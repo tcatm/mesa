@@ -219,7 +219,11 @@ export function tableBuilder(db: DatabaseSync, n: Network) {
         lastTradeAt: (v?.last as number) ?? null,
         holders: holderCount,
         // Wash trading: lots of trades between a handful of wallets.
-        spam: (trades24h >= 100 && traders24h <= 5) || (holderCount < 3 && trades24h < 3),
+        // Wash trading (lots of trades between a handful of wallets), or a token
+        // left empty for over a day. New launches always show, and Mesa's own.
+        spam:
+          (trades24h >= 100 && traders24h <= 5) ||
+          (holderCount < 3 && trades24h < 3 && (p.timestamp as number) < t - DAY && venueOf(p.hook as string, p.pool_manager as string) !== 'Mesa'),
         supply,
         devPct: supply ? ((S.creatorBal.get(a) ?? 0) / supply) * 100 : null,
         bundlePct: supply ? ((S.bundles.get(a) ?? 0) / supply) * 100 : null,
