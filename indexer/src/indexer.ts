@@ -48,6 +48,7 @@ interface Pool {
   quote_is0: number
   venue: string
   hook: string
+  pool_manager: string
 }
 
 /** New trades and pools, for the live feed. */
@@ -77,7 +78,7 @@ export class Indexer {
       stored ? (JSON.parse(stored) as string[]) : getMeta(db, 'cursor') ? n.poolManagers.filter((p) => !p.backfill).map((p) => lc(p.address)) : all,
     )
     setMeta(db, 'managers', JSON.stringify([...this.live]))
-    for (const p of db.prepare('SELECT id, token, quote, quote_is0, venue, hook FROM pools').all() as unknown as Pool[]) {
+    for (const p of db.prepare('SELECT id, token, quote, quote_is0, venue, hook, pool_manager FROM pools').all() as unknown as Pool[]) {
       this.pools.set(p.id, p)
       this.seen.add(p.token)
       this.seen.add(p.quote)
@@ -159,7 +160,10 @@ export class Indexer {
   private async backfill(signal?: AbortSignal) {
     const missing = this.n.poolManagers.map((p) => lc(p.address)).filter((a) => !this.live.has(a))
     if (!missing.length) return
-    let range = Math.min(this.n.range, 10_000)
+    // History is read in small ranges at first, and the range is saved: a
+    // range too big for memory must not be retried after a restart.
+    let range = Number(getMeta(this.db, 'backfill_range') ?? 1_000)
+    const keep = (r: number) => setMeta(this.db, 'backfill_range', String((range = r)))
     while (!signal?.aborted) {
       try {
         const from = Number(getMeta(this.db, 'backfill') ?? this.n.startBlock)
@@ -177,11 +181,12 @@ export class Indexer {
           return
         }
         const to = Math.min(end - 1, from + range - 1)
+        // Halve the next range before reading this one, so a crash in it doesn't repeat.
+        keep(Math.max(50, Math.floor(range / 2)))
         const events = await this.step(from, to, missing, true)
         setMeta(this.db, 'backfill', String(to + 1))
-        range = events > 5_000 ? Math.max(50, Math.floor((range * 5_000) / events)) : Math.min(10_000, Math.ceil(range * 1.5))
+        keep(events > 2_000 ? Math.max(50, Math.floor(((to - from + 1) * 2_000) / events)) : Math.min(10_000, Math.ceil((to - from + 1) * 1.25)))
       } catch (e) {
-        range = Math.max(50, Math.floor(range / 2))
         console.error(JSON.stringify({ backfillError: e instanceof Error ? e.message.slice(0, 300) : String(e), range }))
         await sleep(2_000)
       }
@@ -418,7 +423,14 @@ export class Indexer {
     }
 
     // 3. Transfers of every launched token, for holders.
-    const tokens = [...new Set([...this.pools.values()].map((p) => p.token))].filter((t) => t !== ZERO)
+    // History reads only the tokens listed on the managers it is reading:
+    // every other token's transfers were indexed live.
+    const onPms = new Set(pms.map(lc))
+    const tokens = [
+      ...new Set(
+        [...this.pools.values()].filter((p) => !history || onPms.has(lc(p.pool_manager))).map((p) => p.token),
+      ),
+    ].filter((t) => t !== ZERO)
     const transferLogs: RawLog[] = []
     for (let i = 0; i < tokens.length; i += 300) {
       transferLogs.push(...(await this.logs(fromBlock, toBlock, tokens.slice(i, i + 300), [T.transfer])))
