@@ -24,7 +24,7 @@ Launch the token for what you're building, earn HYPE from its trading for life, 
 
 | | |
 |---|---|
-| **Launchpad** | Launch your project's token in one transaction. 1B supply, all of it in a Uniswap v4 pool, liquidity locked forever, revenue in HYPE for life. |
+| **Launchpad** | Launch your project's token in one transaction and earn a fee in HYPE on every trade, for life. Builder fees for apps, payout splits for teams. |
 | **Terminal** | Every token on every Elysium launchpad, indexed from our own node: live charts, forensics, one-click trading. |
 | **Bridge** | HYPE between HyperEVM and Elysium through Elysium's official bridge, 1:1, no fee on top. |
 | **Explorer** | [mesa.cx/explorer](https://mesa.cx/explorer): every block, transaction and address, explained in plain words, bridge transfers traced to HyperEVM. |
