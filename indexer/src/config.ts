@@ -36,11 +36,13 @@ export const networks: Record<string, Network> = {
     venues: {
       '0x00c002cdae688f39a90cf2ad74c59421c9502acc': 'BOXA',
       '0x3ab88ddc3cf2a012af88b60828edb4553697e5dc': 'Flaunch',
+      '0xe928f2336051cbd5b9d4531c25eadd13f9a82aec': 'Mesa',
       '0xe11cafa5901b0aab51eb78251488400f9e4320cc': 'ElysPump',
       '0xbacf71bf02b8cfe171853c5ec4a060ba2ac1e0cc': 'ElysPump',
     },
     hype: [ZERO, '0xba876237b0f021a6c6d852d6c26e107997cc5e81', '0x0269031ace34a7821e9d9980d087c35ce7c19eef'],
     usd: { address: '0xb47c4c8f73f009cc0c0d3f92b388d13e293f0b65', decimals: 6 },
+    mesa: { hook: '0xe928f2336051cbd5b9d4531c25eadd13f9a82aec', burner: '0xccfe02c0a8fec0c39683ae00b35a5d4560d8e7c1' },
     startBlock: 0,
     range: Number(process.env.RANGE ?? 10_000),
   },

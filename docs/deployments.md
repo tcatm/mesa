@@ -84,7 +84,28 @@ Outbox, deploy a new MesaBridge (or claim on the Outbox directly; anyone may).
 
 ## Elysium mainnet (99901)
 
-Mesa itself is not deployed.
+### Mesa (launch v1)
+
+Deployed 2026-11-05 at block ~862,800 on the official PoolManager
+(`0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1`), from the launch v1 code that
+was rehearsed below, by `0x2b8E20eA27D1Eeed651D86ee836C5916a4ED3b95` (which
+holds no role). Transactions were posted with `Inbox.sendL2Message`.
+
+| Contract | Address |
+|---|---|
+| MesaHook | `0xE928F2336051cBD5B9D4531C25EaDd13f9A82aeC` |
+| BuybackBurner | `0xcCFe02C0a8Fec0c39683aE00b35A5d4560d8E7C1` |
+| MesaTokenFactory | `0x4E395ad9938689BF6456d7f058f85c8842312f1E` |
+| Create2Deployer | `0xEaBc4276de085d63d66969d03e39BD486fbE949F` |
+
+| Role | Holder |
+|---|---|
+| Genesis launcher (launch #1, $MESA) | `0x25dB99d67481AaEb389A57ae097f2a02e48F0E13` |
+| BuybackBurner owner | `0x25dB99d67481AaEb389A57ae097f2a02e48F0E13` |
+| BuybackBurner keeper (server bot) | `0xd968d8ee37aF5fD2C735C2EF214296D5b9d5Ba1E` |
+| Quote admin | `0x25dB99d67481AaEb389A57ae097f2a02e48F0E13` |
+
+Creator share 70% of base fees, starting tick 173,200 (about 30 HYPE).
 
 ### Rehearsal on mainnet (throwaway, not Mesa)
 
