@@ -16,7 +16,7 @@ import { Mesa } from "./mesa.js";
 
 const mesa = Mesa.fromEnv();
 const server = new McpServer(
-  { name: "mesa", version: "0.2.0" },
+  { name: "mesa", version: "0.3.0" },
   {
     instructions:
       "Mesa is the launchpad for builders on Elysium, the Hyperliquid L2 (chain 99901, gas in HYPE). " +

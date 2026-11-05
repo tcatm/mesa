@@ -32,7 +32,7 @@ type Row = Record<string, unknown>
  *   GET /bridge             Mesa bridge totals and recent transfers
  *   GET /stats
  *   GET /mesa               $MESA burned, HYPE spent on buybacks, every buyback
- *   GET /stream            server-sent events: pool, trade
+ *   GET /stream            server-sent events: pool, trade, update (build log); a ping comment every 20s
  *   GET /health
  */
 export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number) {
@@ -389,6 +389,10 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
   }
   live.on('pool', (r) => push('pool', r))
   live.on('trade', (r) => push('trade', r))
+  // Keeps idle connections open through proxies and lets clients notice a dead one.
+  setInterval(() => {
+    for (const s of streams) s.write(': ping\n\n')
+  }, 20_000).unref()
 
   const server = createServer((req, res) => {
     res.setHeader('access-control-allow-origin', '*')
@@ -423,7 +427,9 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
           req.on('end', () => {
             try {
               if (size > 8_192) throw new UpdateError('too large', 413)
-              json({ ok: true, update: postUpdate(db, JSON.parse(body || '{}')) })
+              const update = postUpdate(db, JSON.parse(body || '{}'))
+              json({ ok: true, update })
+              push('update', update)
             } catch (e) {
               if (e instanceof UpdateError) json({ error: e.message }, e.status)
               else json({ error: 'bad request' }, 400)

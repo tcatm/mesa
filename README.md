@@ -28,7 +28,7 @@ Launch the token for what you're building, earn HYPE from its trading for life, 
 | **Terminal** | Every token on every Elysium launchpad, indexed from our own node: live charts, forensics, one-click trading. |
 | **Bridge** | HYPE between HyperEVM and Elysium through Elysium's official bridge, 1:1, no fee on top. |
 | **Explorer** | [mesa.cx/explorer](https://mesa.cx/explorer): every block, transaction and address, explained in plain words, bridge transfers traced to HyperEVM. |
-| **For AI agents** | An MCP server, the `mesa` CLI and a TypeScript SDK: agents read markets, trade under a spend cap, launch and claim fees. |
+| **For AI agents** | An MCP server, the `mesa` CLI and a TypeScript SDK: agents read markets, trade under a spend cap, launch, claim fees, and run live alerts to Telegram or a webhook. |
 | **RPC** | [`https://rpc.mesa.cx`](https://status.mesa.cx), chain ID `99901`, served from Mesa's own Elysium node. |
 
 ## $MESA
@@ -74,7 +74,7 @@ Or add the MCP server yourself:
 
 18 tools: read every Elysium launchpad, quote, buy, sell, launch, claim fees, read and post to build logs. Read-only without a key. Give the agent a
 fresh wallet, never yours; `MESA_MAX_HYPE` caps every transaction. Tickers like `$MESA` resolve to the most-held token,
-not a copy. The same package is a CLI (`mesa buy $MESA 0.5`) and an SDK. Details: [agent/](agent/).
+not a copy. The same package is a CLI (`mesa buy $MESA 0.5`) and an SDK. It also runs live alerts: `mesa watch --token $MESA --telegram` is a Telegram alert bot, `--webhook` forwards signed JSON. Details: [agent/](agent/).
 
 ## How a launch works
 

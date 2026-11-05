@@ -38,6 +38,41 @@ Leave `MESA_PRIVATE_KEY` out for read-only.
 | `market_stats`, `mesa_burns`, `explain_transaction` | `post_update` to the token's build log |
 | `quote`, `claimable_fees`, `get_updates` | |
 
+## Live alerts: Telegram bots and webhooks
+
+`mesa watch` follows Elysium live (trades, new launches, build-log updates), filters it, and forwards each event.
+
+```bash
+# A Telegram alert bot for your token, in three steps:
+# 1. Make a bot with @BotFather and copy its token. Add it to your group (or message it).
+export TELEGRAM_BOT_TOKEN=123456:ABC…
+# 2. Find the chat's id.
+npx -y --package=https://mesa.cx/agent/mesa-agent.tgz mesa telegram-chats
+export TELEGRAM_CHAT_ID=-100…
+# 3. Run it (keep it running with pm2, systemd, or a small VPS).
+npx -y --package=https://mesa.cx/agent/mesa-agent.tgz mesa watch --token '$MESA' --telegram
+```
+
+Filters: `--token` (addresses or tickers, comma-separated), `--launchpad Mesa`, `--only trades,launches,updates`,
+`--min 1` (trades of at least 1 HYPE), `--side buy`. Without a destination it prints to the terminal (JSON lines in a pipe).
+
+**Webhooks:** `--webhook https://your.app/hook` POSTs each event as JSON. Set `MESA_WEBHOOK_SECRET` and every request
+carries `x-mesa-signature: sha256=<HMAC-SHA256 of the raw body>`, so your server can check it came from your watcher.
+Failed deliveries retry three times. The watcher runs on your machine, so nothing about your endpoint is shared with Mesa.
+
+From code:
+
+```ts
+import { watch, describe } from "mesa-agent";
+
+for await (const e of watch({ launchpad: "Mesa", kinds: ["launch", "trade"], minHype: 1 })) {
+  console.log(describe(e)); // 🟢 BUY  $MESA  2.5 HYPE  (…)
+}
+```
+
+Events are `{ type: "trade" | "launch" | "update", token: { address, symbol, name, venue }, … }` with explorer and chart
+links. The raw feed is `GET https://api.mesa.cx/elysium/stream` (server-sent events: `trade`, `pool`, `update`).
+
 ## Safety
 
 - Use a **wallet made for the agent**, funded with only what it may spend. Never your main wallet.
