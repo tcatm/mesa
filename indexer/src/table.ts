@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 
 import { BUNDLE_BLOCKS, DEAD, IMAGE_OVERRIDES, ZERO, type Network } from './config.js'
+import { marketHypeUsd, startHypeUsd } from './hypeUsd.js'
 
 const DAY = 86_400
 const HOUR = 3_600
@@ -25,6 +26,7 @@ export const PX = `(CASE WHEN token_amount > 0 AND value_hype > 0 AND (price_hyp
  *    prices for the tokens that traded in it.
  */
 export function tableBuilder(db: DatabaseSync, n: Network) {
+  startHypeUsd()
   const hype = new Set(n.hype.map((a) => a.toLowerCase()))
   const usd = n.usd?.address.toLowerCase()
   const notListed = new Set([...hype, ...(usd ? [usd] : [])])
@@ -46,6 +48,8 @@ export function tableBuilder(db: DatabaseSync, n: Network) {
   const one = (sql: string, ...p: (string | number)[]) => db.prepare(sql).get(...p) as Row | undefined
   const placeholders = (k: number) => Array(k).fill('?').join(',')
   function hypeUsd(): number | null {
+    const market = marketHypeUsd()
+    if (market !== null) return market
     if (!usd) return null
     const r = one(`SELECT ${PX} price_hype FROM trades WHERE token = ? AND price_hype IS NOT NULL ORDER BY block DESC, log_index DESC LIMIT 1`, usd)
     return r?.price_hype ? 1 / (r.price_hype as number) : null

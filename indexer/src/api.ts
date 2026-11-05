@@ -3,6 +3,7 @@ import { Worker } from 'node:worker_threads'
 import type { DatabaseSync } from 'node:sqlite'
 
 import { BUNDLE_BLOCKS, DEAD, ZERO, type Network } from './config.js'
+import { marketHypeUsd, startHypeUsd } from './hypeUsd.js'
 import { getMeta } from './db.js'
 import { live } from './indexer.js'
 import { bridgeLookup, bridgeStats } from './bridgeTracker.js'
@@ -36,6 +37,7 @@ type Row = Record<string, unknown>
  *   GET /health
  */
 export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number) {
+  startHypeUsd()
   migrateUpdates(db)
   const hype = new Set(n.hype.map((a) => a.toLowerCase()))
   const usd = n.usd?.address.toLowerCase()
@@ -56,8 +58,10 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
   const one = (sql: string, ...p: (string | number)[]) => db.prepare(sql).get(...p) as Row | undefined
   const placeholders = (k: number) => Array(k).fill('?').join(',')
 
-  /** HYPE's price in dollars, from the latest HYPE/USDC trade. */
+  /** HYPE's price in dollars: Hyperliquid's market, else the latest Elysium HYPE/USDC trade. */
   function hypeUsd(): number | null {
+    const market = marketHypeUsd()
+    if (market !== null) return market
     if (!usd) return null
     const r = one(`SELECT ${PX} price_hype FROM trades WHERE token = ? AND price_hype IS NOT NULL ORDER BY block DESC, log_index DESC LIMIT 1`, usd)
     return r?.price_hype ? 1 / (r.price_hype as number) : null
