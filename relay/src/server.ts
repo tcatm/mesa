@@ -286,7 +286,15 @@ async function sendRaw(raw: string, ip: string): Promise<string> {
   const expected = nextFor(from, confirmed)
   // The next nonce, or a replacement (cancel, speed up) of one still waiting.
   const replaces = [...pending.values()].find((r) => r.from === from && r.nonce === tx.nonce)
-  if (tx.nonce !== expected && !replaces) reject('nonce', -32000, `nonce ${tx.nonce} is not the next one (${expected})`)
+  if (tx.nonce !== expected && !replaces) {
+    reject(
+      'nonce',
+      -32000,
+      tx.nonce > expected
+        ? `nonce ${tx.nonce} skips ${expected}: an earlier transaction was dropped. Reset your wallet's activity (MetaMask: Settings, Advanced, Clear activity tab data) and send again`
+        : `nonce ${tx.nonce} is already used (next is ${expected})`,
+    )
+  }
   const price = tx.maxFeePerGas ?? tx.gasPrice ?? BigNumber.from(0)
   // A transaction whose max fee is below Elysium's base fee when it lands is
   // dropped there, silently, and every later nonce of the wallet waits on it.
