@@ -16,9 +16,11 @@
  *   /hyperevm/tokens/:address
  *   /hyperevm/tokens/:address/bars?resolution=5&from=<unix>&to=<unix>
  *   /hyperevm/tokens/:address/trades?cursor=<opaque>
+ *   /img?u=<https url>   a token image, checked and cached (see images.ts)
  *   /health
  */
 import { createServer, type ServerResponse } from 'node:http'
+import { image, ImageError, imageHeaders } from './images.js'
 
 const KEY = process.env.CODEX_API_KEY
 if (!KEY) throw new Error('CODEX_API_KEY is required')
@@ -285,17 +287,20 @@ async function route(url: URL): Promise<unknown> {
 /** Simple per-IP limit, so one client cannot spend the Codex budget. */
 const hits = new Map<string, { n: number; at: number }>()
 const PER_MINUTE = Number(process.env.PER_IP_PER_MIN ?? 300)
-function allowed(ip: string): boolean {
+function allowed(ip: string, table = hits, limit = PER_MINUTE): boolean {
   const now = Date.now()
-  const h = hits.get(ip)
+  const h = table.get(ip)
   if (!h || now - h.at > 60_000) {
-    hits.set(ip, { n: 1, at: now })
-    if (hits.size > 50_000) hits.clear()
+    table.set(ip, { n: 1, at: now })
+    if (table.size > 50_000) table.clear()
     return true
   }
   h.n += 1
-  return h.n <= PER_MINUTE
+  return h.n <= limit
 }
+/** Images have their own, looser limit: a page of tokens is dozens of them. */
+const imageHits = new Map<string, { n: number; at: number }>()
+const IMAGES_PER_MINUTE = Number(process.env.IMAGES_PER_IP_PER_MIN ?? 1200)
 
 function send(res: ServerResponse, status: number, body: unknown, maxAge = 0) {
   res.writeHead(status, {
@@ -313,8 +318,19 @@ createServer((req, res) => {
   }
   if (req.method !== 'GET') return send(res, 405, { error: 'GET only' })
   const ip = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? ''
-  if (!allowed(ip)) return send(res, 429, { error: 'too many requests' })
   const url = new URL(req.url ?? '/', 'http://local')
+  if (url.pathname === '/img') {
+    if (!allowed(ip, imageHits, IMAGES_PER_MINUTE)) return send(res, 429, { error: 'too many requests' })
+    image(url.searchParams.get('u') ?? '').then(
+      ({ type, body }) => {
+        res.writeHead(200, imageHeaders(type, body.length))
+        res.end(body)
+      },
+      (e: unknown) => send(res, e instanceof ImageError ? e.status : 502, { error: e instanceof ImageError ? e.message : 'image unavailable' }, 60),
+    )
+    return
+  }
+  if (!allowed(ip)) return send(res, 429, { error: 'too many requests' })
   route(url).then(
     (body) => send(res, 200, body, url.pathname === '/health' ? 0 : 5),
     (e: unknown) => {

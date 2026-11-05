@@ -21,6 +21,10 @@ api.mesa.cx {
 	handle /hyperevm/* {
 		reverse_proxy 127.0.0.1:8085
 	}
+	# Token images, checked and cached, so the site loads images from here only.
+	handle /img {
+		reverse_proxy 127.0.0.1:8085
+	}
 	# The Elysium mainnet terminal (every launchpad), from our own node.
 	handle_path /elysium/* {
 		reverse_proxy 127.0.0.1:8081 {

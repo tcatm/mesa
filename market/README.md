@@ -16,6 +16,7 @@ plan's compute units scale with distinct pages viewed, not with visitors.
 | `GET /hyperevm/tokens/:address` | 10 s |
 | `GET /hyperevm/tokens/:address/bars?resolution=1\|5\|15\|60\|240\|1D&from&to` | up to 15 s, bucketed per bar |
 | `GET /hyperevm/tokens/:address/trades?cursor=` | 4 s (latest), 60 s (older pages) |
+| `GET /img?u=<https url>` | a token image, fetched once, checked to be an image (no private addresses, 3 MB max) and cached for a day |
 | `GET /health` | none |
 
 Market caps above $500B, or more than 20,000 times the token's HyperEVM
