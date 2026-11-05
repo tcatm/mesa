@@ -6,6 +6,7 @@ import { BUNDLE_BLOCKS, DEAD, ZERO, type Network } from './config.js'
 import { getMeta } from './db.js'
 import { live } from './indexer.js'
 import { bridgeLookup, bridgeStats } from './bridgeTracker.js'
+import { UpdateError, listUpdates, migrateUpdates, postUpdate } from './updates.js'
 import { PX, tableBuilder } from './table.js'
 
 const DAY = 86_400
@@ -35,6 +36,7 @@ type Row = Record<string, unknown>
  *   GET /health
  */
 export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number) {
+  migrateUpdates(db)
   const hype = new Set(n.hype.map((a) => a.toLowerCase()))
   const usd = n.usd?.address.toLowerCase()
   const notListed = new Set([...hype, ...(usd ? [usd] : [])])
@@ -390,6 +392,8 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
 
   const server = createServer((req, res) => {
     res.setHeader('access-control-allow-origin', '*')
+    res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS')
+    res.setHeader('access-control-allow-headers', 'content-type')
     if (req.method === 'OPTIONS') return res.writeHead(204).end()
     const url = new URL(req.url ?? '/', 'http://x')
     const q = url.searchParams
@@ -406,6 +410,33 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
         streams.add(res)
         req.on('close', () => streams.delete(res))
         return
+      }
+      // The build log: POST /updates with a signed update; GET /updates, /tokens/<a>/updates.
+      if (parts[0] === 'updates' && parts.length === 1) {
+        if (req.method === 'POST') {
+          let body = ''
+          let size = 0
+          req.on('data', (c: Buffer) => {
+            size += c.length
+            if (size <= 8_192) body += c.toString('utf8')
+          })
+          req.on('end', () => {
+            try {
+              if (size > 8_192) throw new UpdateError('too large', 413)
+              json({ ok: true, update: postUpdate(db, JSON.parse(body || '{}')) })
+            } catch (e) {
+              if (e instanceof UpdateError) json({ error: e.message }, e.status)
+              else json({ error: 'bad request' }, 400)
+            }
+          })
+          return
+        }
+        return json(
+          listUpdates(db, null, num('limit', 20, 100)).map((u) => {
+            const t = table().find((r) => r.address === u.token)
+            return { ...u, symbol: t?.symbol ?? null, name: t?.name ?? null, image: t?.image ?? null }
+          }),
+        )
       }
       if (parts[0] === 'health' || parts.length === 0) return json({ ok: true, ...stats() })
       if (parts[0] === 'stats') return json(stats())
@@ -481,6 +512,7 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
           const t = tokenDetail(a)
           return t ? json(t) : json({ error: 'unknown token' }, 404)
         }
+        if (parts[2] === 'updates') return json(listUpdates(db, a, num('limit', 50, 200)))
         if (parts[2] === 'trades') {
           const before = Number(q.get('before') ?? 1e12)
           return json(
