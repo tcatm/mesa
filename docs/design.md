@@ -11,6 +11,9 @@ the contracts do, exactly. The fee and parameter tables are in
 |---|---|
 | `MesaHook` | The launcher and the hook of every Mesa pool. Holds all launch liquidity. |
 | `MesaToken` | The token each launch deploys. Fixed supply of 1,000,000,000, no owner, no mint, no burn, no pause, no transfer tax. |
+| `MesaRewardToken` | The same, plus the books for holder rewards. Deployed instead of `MesaToken` when a creator gives holders a share of their fees. |
+| `MesaPayout` | Per token, when a creator splits their fees: pays up to five wallets, holders and buyback-and-burn of the token. Outside the swap path. |
+| `MesaTokenFactory` | Deploys each launch's token, and its `MesaPayout` if any. Called by `MesaHook`. |
 | `BuybackBurner` | Receives the protocol share of fees. Can only buy $MESA and burn it, after converting fees in other quotes to HYPE. Deployed by `MesaHook`'s constructor, so the pairing cannot be forged. |
 | `QuoteRegistry` | Which ERC-20 quote assets new launches may pair against. Deployed by `MesaHook`'s constructor. |
 | `Create2Deployer` | Places the hook at an address whose low bits encode its v4 permissions. |
@@ -28,7 +31,8 @@ token `BuybackBurner` can ever buy.
 
 `MesaHook.launch(params)`, in one transaction:
 
-1. Deploys a `MesaToken` and mints the full supply to the hook.
+1. Has `MesaTokenFactory` deploy the token (and its `MesaPayout`, if the
+   creator splits their fees) and mint the full supply to the hook.
 2. Creates the pool of the token against its quote (native HYPE, or an
    enabled ERC-20 quote) on the PoolManager, LP fee 0, tick spacing 200,
    hook = `MesaHook`.
@@ -37,7 +41,7 @@ token `BuybackBurner` can ever buy.
    removed. Rounding dust (a fraction of one token) is sent to `0x…dEaD`.
 4. If a dev buy was sent with the call (HYPE as `msg.value`, or an ERC-20
    quote pulled from the caller), executes the creator's **declared dev buy**
-   at the starting price, charges the normal buy fee on it, and sends the
+   at the starting price, charges the normal fee on it, and sends the
    tokens to the caller. A dev buy above 10% of supply reverts.
 
 The starting price of native HYPE launches is fixed at deployment
@@ -66,17 +70,50 @@ minimum-output check for slippage protection instead; standard routers do.
 Fees are held in the PoolManager as ERC-6909 claims of the quote, owned by
 the hook, and credited to `accruedOf[quote][address]`:
 
-- **Base fee** (per-launch buy and sell rates): `creatorShareBps` to the
-  token's fee recipient, the rest to `BuybackBurner`.
+- **Trading fee** (one rate per launch, on buys and sells, fixed for the
+  pool's life): `creatorShareBps` to the token's fee recipient, the rest to
+  `BuybackBurner`.
+- **Builder fee**: a launch may name a builder (the app it was launched
+  through) who earns up to 1% on top of the trading fee, on every trade. It
+  is an add-on: the creator's and protocol's shares of the trading fee do not
+  change.
 - **Sniper surcharge**: 100% to `BuybackBurner`. A creator who snipes their
   own launch from another wallet pays the full surcharge and gets none of it
   back.
 
 Anyone with a balance withdraws it with `claim()` (HYPE) or `claim(quote)`.
 `previewFees(token, amount, isBuy)` returns what a trade would pay right now
-and where it would go. A token's fee recipient hands over in two steps:
+and where it would go, and `currentFeeBps(token, isBuy)` the total rate. Every
+fee also emits the standard `HookSwap` and `HookFee` events of the Uniswap
+Foundation's hook data standard, so indexers and aggregators can read it. A token's fee recipient hands over in two steps:
 `setFeeRecipient` proposes, and the new address must `acceptFeeRecipient`, so
 a typo cannot strand the fees. Fees already accrued stay with the old one.
+
+## Payouts
+
+A creator chooses where their share of the fees goes, at launch:
+
+- **One wallet** (the default): the fee recipient claims from `MesaHook`.
+- **A split**, between up to five payout wallets, the token's holders and
+  buying back and burning the token itself, in shares fixed at launch. The
+  token's fee recipient is then its own `MesaPayout` contract:
+  - `collect()` (anyone) pulls the fees from `MesaHook` and splits them.
+    Payout wallets `claim()` theirs; each can hand its share to a new wallet
+    in two steps.
+  - Holder rewards: `distribute()` (anyone, at most every 10 minutes, once
+    at least 0.01 HYPE is waiting) sends the holders' share to the token.
+    Every wallet holding at least 1,000,000 tokens (0.1% of supply) earns in
+    proportion to its balance; contracts never earn, except EIP-7702
+    delegated wallets. Holders claim with `claim()`, or anyone pushes it to
+    them with `claimFor(holder)`. Nothing loops over holders.
+  - Buyback: `buyback()` (anyone, at most every 10 minutes) buys the token
+    with at most 0.25 HYPE of the buyback share and sends it to `0x…dEaD`.
+    Kept small so that sandwiching it costs more in the pool's fee (paid
+    twice, at least 1% each way) than it can make.
+
+A payout contract only ever holds its own token's fees and never runs inside
+a swap: nothing in it can reach a pool's liquidity, another token's fees or
+$MESA. Splits are for tokens paired with native HYPE.
 
 ## Fairness kit
 
@@ -141,8 +178,9 @@ can renounce that.
 
 ## Deployment
 
-`script/Deploy.s.sol` deploys `Create2Deployer`, then mines a salt and deploys
-`MesaHook` (which deploys `BuybackBurner`). It refuses to run unless
+`script/Deploy.s.sol` deploys `MesaTokenFactory` and `Create2Deployer`, then
+mines a salt and deploys `MesaHook` (which deploys `BuybackBurner` and
+`QuoteRegistry`). It refuses to run unless
 `EXPECTED_CHAIN_ID` matches the chain, bounds-checks every parameter, and
 checks that `POOL_MANAGER` answers like a v4 PoolManager. For a rehearsal on
 Elysium testnet or a local chain it can deploy its own PoolManager

@@ -58,7 +58,9 @@ export function open(path: string): DatabaseSync {
       max_buy_bps INTEGER NOT NULL,
       dev_buy_quote REAL NOT NULL,
       dev_buy_tokens REAL NOT NULL,
-      genesis INTEGER NOT NULL DEFAULT 0
+      genesis INTEGER NOT NULL DEFAULT 0,
+      builder TEXT,
+      builder_fee_bps INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS trades (
@@ -129,6 +131,10 @@ export function open(path: string): DatabaseSync {
       PRIMARY KEY (tx, log_index)
     );
   `)
+  // Columns added after a database was first created.
+  const cols = new Set((db.prepare('PRAGMA table_info(mesa_launches)').all() as { name: string }[]).map((c) => c.name))
+  if (!cols.has('builder')) db.exec('ALTER TABLE mesa_launches ADD COLUMN builder TEXT')
+  if (!cols.has('builder_fee_bps')) db.exec('ALTER TABLE mesa_launches ADD COLUMN builder_fee_bps INTEGER NOT NULL DEFAULT 0')
   return db
 }
 

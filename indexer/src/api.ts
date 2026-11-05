@@ -240,8 +240,11 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
       tradesAllTime: totals?.n,
       mesa: mesa
         ? {
+            feeBps: mesa.buy_fee_bps,
             buyFeeBps: mesa.buy_fee_bps,
             sellFeeBps: mesa.sell_fee_bps,
+            builder: mesa.builder ?? null,
+            builderFeeBps: mesa.builder_fee_bps ?? 0,
             sniperFeeBps: mesa.sniper_fee_bps,
             snipeSeconds: mesa.snipe_seconds,
             maxBuyBps: mesa.max_buy_bps,

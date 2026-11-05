@@ -9,10 +9,12 @@ import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 import {MesaHook} from "../src/MesaHook.sol";
 import {BuybackBurner} from "../src/BuybackBurner.sol";
 import {Create2Deployer} from "../src/Create2Deployer.sol";
+import {MesaTokenFactory} from "../src/MesaTokenFactory.sol";
 import {HookMiner} from "./HookMiner.sol";
 
-/// @notice Deploys Mesa: Create2Deployer, then MesaHook at a mined address.
-/// MesaHook's constructor deploys its BuybackBurner.
+/// @notice Deploys Mesa: MesaTokenFactory and Create2Deployer, then MesaHook at
+/// a mined address. MesaHook's constructor deploys its BuybackBurner and
+/// QuoteRegistry.
 ///
 ///   forge script script/Deploy.s.sol --rpc-url elysium_testnet --broadcast
 ///
@@ -104,6 +106,7 @@ contract Deploy is Script {
             IProtocolFees(address(manager)).protocolFeeController(); // reverts unless it looks like a v4 PoolManager
         }
 
+        MesaTokenFactory tokenFactory = new MesaTokenFactory();
         Create2Deployer factory = new Create2Deployer();
         bytes memory initCode = abi.encodePacked(
             type(MesaHook).creationCode,
@@ -115,7 +118,8 @@ contract Deploy is Script {
                 s.owner,
                 s.keeper,
                 s.maxPerCall,
-                s.quoteAdmin
+                s.quoteAdmin,
+                tokenFactory
             )
         );
         (address expected, bytes32 salt) = HookMiner.find(address(factory), FLAGS, initCode);
@@ -124,6 +128,7 @@ contract Deploy is Script {
 
         require(address(hook) == expected, "hook address mismatch");
         burner = BuybackBurner(payable(hook.protocolRecipient()));
+        console.log("TokenFactory   ", address(hook.tokenFactory()));
         console.log("Create2Deployer", address(factory));
         console.log("MesaHook       ", address(hook));
         console.log("BuybackBurner  ", address(burner));

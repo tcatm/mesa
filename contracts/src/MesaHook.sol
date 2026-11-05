@@ -16,7 +16,7 @@ import {SafeCast} from "v4-core/src/libraries/SafeCast.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 
-import {MesaToken} from "./MesaToken.sol";
+import {MesaTokenFactory} from "./MesaTokenFactory.sol";
 import {BuybackBurner} from "./BuybackBurner.sol";
 import {QuoteRegistry} from "./QuoteRegistry.sol";
 import {LaunchMath} from "./LaunchMath.sol";
@@ -26,7 +26,8 @@ import {LaunchMath} from "./LaunchMath.sol";
 /// hook of every pool it creates.
 ///
 /// Each launch:
-///  - deploys a fixed-supply MesaToken (no owner, no mint);
+///  - has `tokenFactory` deploy a fixed-supply token (no owner, no mint), and
+///    the token's payout contract if the creator splits their fees;
 ///  - creates a pool of the token against its quote asset (native HYPE by
 ///    default, or an ERC-20 the quote registry has enabled), with this
 ///    contract as hook, at the quote's fixed starting price, and puts the
@@ -38,10 +39,12 @@ import {LaunchMath} from "./LaunchMath.sol";
 ///  - Liquidity is locked forever: no one can remove it, this contract
 ///    included. Only this contract can add liquidity, and only at launch.
 ///  - Only this contract can create pools that use it as hook.
-///  - Fees are charged on the quote side of every trade, within hard caps,
-///    and split between the token's fee recipient and the protocol at a ratio
-///    fixed at deployment. The sniper surcharge goes entirely to the protocol,
-///    so a creator gains nothing by sniping their own launch.
+///  - Every trade pays one fee, fixed for the pool's life, on the quote side,
+///    within hard caps, split between the token's fee recipient and the
+///    protocol at a ratio fixed at deployment. A launch may name a builder,
+///    who earns an add-on of at most 1% on top. The sniper surcharge goes
+///    entirely to the protocol, so a creator gains nothing by sniping their
+///    own launch.
 ///  - Every swap kind pays the same share of its gross quote amount. Swaps
 ///    that would fill only partially (because of a price limit) revert
 ///    instead of paying fees on input that never traded.
@@ -66,9 +69,11 @@ contract MesaHook is IHooks, IUnlockCallback {
     int24 public constant TICK_SPACING = LaunchMath.TICK_SPACING;
     uint256 internal constant SUPPLY = LaunchMath.SUPPLY;
 
-    /// @notice Base trading fee bounds per side.
+    /// @notice Trading fee bounds: one fee on buys and sells, fixed at launch.
     uint16 public constant MIN_FEE_BPS = 100;
     uint16 public constant MAX_FEE_BPS = 1_000;
+    /// @notice Builder add-on bound, on top of the trading fee.
+    uint16 public constant MAX_BUILDER_FEE_BPS = 100;
     /// @notice Sniper surcharge: starts at most here and decays to zero.
     uint16 public constant MAX_SNIPER_FEE_BPS = 3_000;
     uint32 public constant MAX_SNIPE_SECONDS = 15 minutes;
@@ -99,6 +104,8 @@ contract MesaHook is IHooks, IUnlockCallback {
     int24 public immutable initialTick;
     /// @notice Which ERC-20 quote assets new launches may use.
     QuoteRegistry public immutable quoteRegistry;
+    /// @notice Deploys each launch's token, and its payout contract if any.
+    MesaTokenFactory public immutable tokenFactory;
 
     // ------------------------------------------------------------- state
 
@@ -107,15 +114,20 @@ contract MesaHook is IHooks, IUnlockCallback {
         string symbol;
         /// Off-chain metadata (image, links), emitted only.
         string metadataURI;
-        /// Receives the creator share of fees. Can be handed over later.
+        /// Receives the creator share of fees, when `payout` is empty. Can be handed over later.
         address feeRecipient;
-        uint16 buyFeeBps;
-        uint16 sellFeeBps;
+        /// The trading fee on buys and sells, for the pool's life.
+        uint16 feeBps;
         /// Surcharge on buys at launch, decaying linearly to zero over `snipeSeconds`.
         uint16 sniperFeeBps;
         uint32 snipeSeconds;
         /// Max share of supply one transaction may buy during `snipeSeconds`. 10_000 = no cap.
         uint16 maxBuyBps;
+        /// Earns `builderFeeBps` on top of the trading fee; address(0) for none.
+        address builder;
+        uint16 builderFeeBps;
+        /// Empty, or a split of the creator fees (see MesaTokenFactory).
+        bytes payout;
     }
 
     struct PoolConfig {
@@ -125,12 +137,13 @@ contract MesaHook is IHooks, IUnlockCallback {
         address quote;
         /// Whether the quote is currency0 of the pool.
         bool quoteIs0;
-        uint16 buyFeeBps;
-        uint16 sellFeeBps;
+        uint16 feeBps;
+        uint16 builderFeeBps;
         uint16 sniperFeeBps;
         uint16 maxBuyBps;
         uint32 snipeSeconds;
         uint64 launchedAt;
+        address builder;
     }
 
     /// @notice The first token launched here: $MESA.
@@ -159,15 +172,29 @@ contract MesaHook is IHooks, IUnlockCallback {
         string name,
         string symbol,
         string metadataURI,
-        uint16 buyFeeBps,
-        uint16 sellFeeBps,
+        uint16 feeBps,
+        address builder,
+        uint16 builderFeeBps,
         uint16 sniperFeeBps,
         uint32 snipeSeconds,
         uint16 maxBuyBps,
         uint256 devBuyQuote,
         uint256 devBuyTokens
     );
-    event FeesTaken(PoolId indexed poolId, bool buy, uint256 baseFee, uint256 sniperFee);
+    event FeesTaken(PoolId indexed poolId, bool buy, uint256 baseFee, uint256 builderFee, uint256 sniperFee);
+    /// @notice Standard hook swap event (Uniswap Foundation hook data
+    /// standard): the hook's delta on the swap, which is its fee, taken in
+    /// the quote currency; the same amount again as the fee fields.
+    event HookSwap(
+        bytes32 indexed id,
+        address indexed sender,
+        int128 amount0,
+        int128 amount1,
+        uint128 hookLPfeeAmount0,
+        uint128 hookLPfeeAmount1
+    );
+    /// @notice Standard hook fee event: every fee this hook took on a swap.
+    event HookFee(bytes32 indexed id, address indexed sender, uint128 feeAmount0, uint128 feeAmount1);
     event FeeRecipientProposed(PoolId indexed poolId, address next);
     event FeeRecipientChanged(PoolId indexed poolId, address previous, address next);
     event Claimed(address indexed recipient, address indexed quote, uint256 amount);
@@ -203,10 +230,12 @@ contract MesaHook is IHooks, IUnlockCallback {
         address burnerOwner,
         address burnerKeeper,
         uint256 buybackMaxPerCall,
-        address quoteAdmin_
+        address quoteAdmin_,
+        MesaTokenFactory tokenFactory_
     ) {
         if (creatorShareBps_ > BPS) revert InvalidParams("creatorShareBps");
         if (genesisLauncher_ == address(0)) revert InvalidParams("genesisLauncher");
+        if (address(tokenFactory_).code.length == 0) revert InvalidParams("tokenFactory");
         // Native HYPE is always currency0, so only that orientation matters here.
         LaunchMath.checkStartTick(initialTick_, true);
 
@@ -214,6 +243,7 @@ contract MesaHook is IHooks, IUnlockCallback {
         creatorShareBps = creatorShareBps_;
         initialTick = initialTick_;
         genesisLauncher = genesisLauncher_;
+        tokenFactory = tokenFactory_;
         quoteRegistry = new QuoteRegistry(quoteAdmin_);
         protocolRecipient =
             address(new BuybackBurner(poolManager_, address(this), buybackMaxPerCall, burnerOwner, burnerKeeper));
@@ -291,7 +321,10 @@ contract MesaHook is IHooks, IUnlockCallback {
         int24 startTick = initialTick;
         if (quote != NATIVE) startTick = quoteRegistry.startTickOf(quote);
 
-        token = address(new MesaToken(p.name, p.symbol, address(this)));
+        address feeRecipient;
+        (token, feeRecipient) = tokenFactory.create(p.name, p.symbol, quote, p.feeRecipient, p.payout);
+        if (feeRecipient == address(0)) revert InvalidParams("feeRecipient");
+        if (ERC20(token).balanceOf(address(this)) != SUPPLY) revert InvalidParams("token");
         if (genesisToken == address(0)) {
             if (msg.sender != genesisLauncher || quote != NATIVE) revert GenesisFirst();
             genesisToken = token;
@@ -301,15 +334,16 @@ contract MesaHook is IHooks, IUnlockCallback {
         PoolId id = key.toId();
         pools[id] = PoolConfig({
             token: token,
-            feeRecipient: p.feeRecipient,
+            feeRecipient: feeRecipient,
             quote: quote,
             quoteIs0: quoteIs0,
-            buyFeeBps: p.buyFeeBps,
-            sellFeeBps: p.sellFeeBps,
+            feeBps: p.feeBps,
+            builderFeeBps: p.builderFeeBps,
             sniperFeeBps: p.sniperFeeBps,
             maxBuyBps: p.maxBuyBps,
             snipeSeconds: p.snipeSeconds,
-            launchedAt: uint64(block.timestamp)
+            launchedAt: uint64(block.timestamp),
+            builder: p.builder
         });
         poolOf[token] = id;
 
@@ -330,12 +364,13 @@ contract MesaHook is IHooks, IUnlockCallback {
             id,
             msg.sender,
             quote,
-            p.feeRecipient,
+            feeRecipient,
             p.name,
             p.symbol,
             p.metadataURI,
-            p.buyFeeBps,
-            p.sellFeeBps,
+            p.feeBps,
+            p.builder,
+            p.builderFeeBps,
             p.sniperFeeBps,
             p.snipeSeconds,
             p.maxBuyBps,
@@ -350,9 +385,9 @@ contract MesaHook is IHooks, IUnlockCallback {
         if (nameLen == 0 || nameLen > 64) revert InvalidParams("name");
         if (symbolLen == 0 || symbolLen > 16) revert InvalidParams("symbol");
         if (bytes(p.metadataURI).length > 512) revert InvalidParams("metadataURI");
-        if (p.feeRecipient == address(0)) revert InvalidParams("feeRecipient");
-        if (p.buyFeeBps < MIN_FEE_BPS || p.buyFeeBps > MAX_FEE_BPS) revert InvalidParams("buyFeeBps");
-        if (p.sellFeeBps < MIN_FEE_BPS || p.sellFeeBps > MAX_FEE_BPS) revert InvalidParams("sellFeeBps");
+        if (p.feeBps < MIN_FEE_BPS || p.feeBps > MAX_FEE_BPS) revert InvalidParams("feeBps");
+        if (p.builderFeeBps > MAX_BUILDER_FEE_BPS) revert InvalidParams("builderFeeBps");
+        if ((p.builder == address(0)) != (p.builderFeeBps == 0)) revert InvalidParams("builder");
         if (p.sniperFeeBps > MAX_SNIPER_FEE_BPS) revert InvalidParams("sniperFeeBps");
         if (p.snipeSeconds > MAX_SNIPE_SECONDS) revert InvalidParams("snipeSeconds");
         if (p.maxBuyBps < MIN_MAX_BUY_BPS || p.maxBuyBps > BPS) revert InvalidParams("maxBuyBps");
@@ -453,16 +488,17 @@ contract MesaHook is IHooks, IUnlockCallback {
         );
         uint256 owed = uint256(uint128(-(q0 ? added.amount1() : added.amount0())));
         poolManager.sync(tokenC);
-        MesaToken(c.token).transfer(address(poolManager), owed);
+        ERC20(c.token).safeTransfer(address(poolManager), owed);
         poolManager.settle();
         // Rounding dust that did not fit the position is burned.
-        uint256 dust = MesaToken(c.token).balanceOf(address(this));
-        if (dust > 0) MesaToken(c.token).transfer(DEAD, dust);
+        uint256 dust = ERC20(c.token).balanceOf(address(this));
+        if (dust > 0) ERC20(c.token).safeTransfer(DEAD, dust);
 
         // 2. Declared dev buy at the starting price. Hooks are skipped for
         // swaps this contract makes, so the fee and cap are applied here.
         if (devBuy == 0) return 0;
-        uint256 fee = devBuy * c.buyFeeBps / BPS;
+        (uint256 baseFee, uint256 builderFee,) = _fees(c, true, devBuy, true);
+        uint256 fee = baseFee + builderFee;
         BalanceDelta swapped = poolManager.swap(
             key,
             IPoolManager.SwapParams({
@@ -490,14 +526,19 @@ contract MesaHook is IHooks, IUnlockCallback {
         poolManager.take(tokenC, buyer, devBuyTokens);
         uint256 refund = devBuy - fee - spent;
         if (refund > 0) poolManager.take(quoteC, buyer, refund);
-        _accrue(id, c, true, fee, 0);
+        _accrue(id, c, true, baseFee, builderFee, 0);
     }
 
     // ------------------------------------------------------------- fees
 
     /// @dev Fee rates as a share of the gross quote amount, in WAD (1e18 = 100%).
-    function _rates(PoolConfig storage c, bool buy) internal view returns (uint256 baseRate, uint256 sniperRate) {
-        baseRate = uint256(buy ? c.buyFeeBps : c.sellFeeBps) * (WAD / BPS);
+    function _rates(PoolConfig storage c, bool buy)
+        internal
+        view
+        returns (uint256 baseRate, uint256 builderRate, uint256 sniperRate)
+    {
+        baseRate = uint256(c.feeBps) * (WAD / BPS);
+        builderRate = uint256(c.builderFeeBps) * (WAD / BPS);
         if (buy && c.sniperFeeBps > 0) {
             uint256 elapsed = block.timestamp - c.launchedAt;
             if (elapsed < c.snipeSeconds) {
@@ -513,31 +554,39 @@ contract MesaHook is IHooks, IUnlockCallback {
     function _fees(PoolConfig storage c, bool buy, uint256 amount, bool gross)
         internal
         view
-        returns (uint256 baseFee, uint256 sniperFee)
+        returns (uint256 baseFee, uint256 builderFee, uint256 sniperFee)
     {
-        (uint256 baseRate, uint256 sniperRate) = _rates(c, buy);
-        uint256 denom = gross ? WAD : WAD - baseRate - sniperRate;
+        (uint256 baseRate, uint256 builderRate, uint256 sniperRate) = _rates(c, buy);
+        uint256 denom = gross ? WAD : WAD - baseRate - builderRate - sniperRate;
         baseFee = FullMath.mulDiv(amount, baseRate, denom);
+        builderFee = FullMath.mulDiv(amount, builderRate, denom);
         sniperFee = FullMath.mulDiv(amount, sniperRate, denom);
     }
 
-    function _accrue(PoolId id, PoolConfig storage c, bool buy, uint256 baseFee, uint256 sniperFee) internal {
+    function _accrue(PoolId id, PoolConfig storage c, bool buy, uint256 baseFee, uint256 builderFee, uint256 sniperFee)
+        internal
+    {
         uint256 creator = baseFee * creatorShareBps / BPS;
         accruedOf[c.quote][c.feeRecipient] += creator;
         accruedOf[c.quote][protocolRecipient] += baseFee - creator + sniperFee;
-        emit FeesTaken(id, buy, baseFee, sniperFee);
+        if (builderFee > 0) accruedOf[c.quote][c.builder] += builderFee;
+        emit FeesTaken(id, buy, baseFee, builderFee, sniperFee);
     }
 
     /// @dev Take the fee from the swap's quote side as ERC-6909 claims.
-    function _take(PoolId id, PoolConfig storage c, bool buy, uint256 amount, bool gross)
+    function _take(address sender, PoolId id, PoolConfig storage c, bool buy, uint256 amount, bool gross)
         internal
         returns (uint256 total)
     {
-        (uint256 baseFee, uint256 sniperFee) = _fees(c, buy, amount, gross);
-        total = baseFee + sniperFee;
+        (uint256 baseFee, uint256 builderFee, uint256 sniperFee) = _fees(c, buy, amount, gross);
+        total = baseFee + builderFee + sniperFee;
         if (total == 0) return 0;
         poolManager.mint(address(this), Currency.wrap(c.quote).toId(), total);
-        _accrue(id, c, buy, baseFee, sniperFee);
+        _accrue(id, c, buy, baseFee, builderFee, sniperFee);
+        uint128 t = uint128(total);
+        (uint128 f0, uint128 f1) = c.quoteIs0 ? (t, uint128(0)) : (uint128(0), t);
+        emit HookSwap(PoolId.unwrap(id), sender, int128(f0), int128(f1), f0, f1);
+        emit HookFee(PoolId.unwrap(id), sender, f0, f1);
     }
 
     // ------------------------------------------------------------- hooks
@@ -590,7 +639,7 @@ contract MesaHook is IHooks, IUnlockCallback {
         bool exactIn = params.amountSpecified < 0;
         if (buy != exactIn) return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         uint256 amount = uint256(exactIn ? -params.amountSpecified : params.amountSpecified);
-        uint256 total = _take(id, c, buy, amount, exactIn);
+        uint256 total = _take(sender, id, c, buy, amount, exactIn);
         _tset(T_FEE, id, total);
         return (IHooks.beforeSwap.selector, toBeforeSwapDelta(int128(int256(total)), 0), 0);
     }
@@ -632,7 +681,7 @@ contract MesaHook is IHooks, IUnlockCallback {
         }
 
         uint256 amount = uint256(uint128(quoteDelta < 0 ? -quoteDelta : quoteDelta));
-        uint256 total = _take(id, c, buy, amount, exactIn);
+        uint256 total = _take(sender, id, c, buy, amount, exactIn);
         return (IHooks.afterSwap.selector, int128(int256(total)));
     }
 
@@ -684,6 +733,15 @@ contract MesaHook is IHooks, IUnlockCallback {
 
     // ------------------------------------------------------------- views
 
+    /// @notice The current total fee on a buy or a sell, in basis points
+    /// (trading fee, builder add-on and any sniper surcharge).
+    function currentFeeBps(address token, bool buy) external view returns (uint256) {
+        PoolConfig storage c = pools[poolOf[token]];
+        if (c.token != token || token == address(0)) revert UnknownPool();
+        (uint256 a, uint256 b, uint256 d) = _rates(c, buy);
+        return (a + b + d) / (WAD / BPS);
+    }
+
     /// @notice Native HYPE claimable by `account`.
     function accrued(address account) external view returns (uint256) {
         return accruedOf[NATIVE][account];
@@ -698,15 +756,15 @@ contract MesaHook is IHooks, IUnlockCallback {
 
     /// @notice The fees a trade of `amount` gross quote (what a buyer pays in,
     /// or what the pool pays a seller before fees) would pay right now, and
-    /// where they would go.
+    /// where they would go. `builderFee` goes to the launch's builder.
     function previewFees(address token, uint256 amount, bool buy)
         external
         view
-        returns (uint256 baseFee, uint256 sniperFee, uint256 toCreator, uint256 toProtocol)
+        returns (uint256 baseFee, uint256 builderFee, uint256 sniperFee, uint256 toCreator, uint256 toProtocol)
     {
         PoolConfig storage c = pools[poolOf[token]];
         if (c.token != token || token == address(0)) revert UnknownPool();
-        (baseFee, sniperFee) = _fees(c, buy, amount, true);
+        (baseFee, builderFee, sniperFee) = _fees(c, buy, amount, true);
         toCreator = baseFee * creatorShareBps / BPS;
         toProtocol = baseFee - toCreator + sniperFee;
     }

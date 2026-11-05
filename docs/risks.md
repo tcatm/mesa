@@ -62,6 +62,13 @@ they could freeze the PoolManager's, and with it every pool in that quote.
 protocol fees in an ERC-20 quote are sold for HYPE, the same trust as for
 buybacks. The proceeds can only stay in the buyback contract.
 
+**Holder rewards and buybacks.** They are new code. Rewards are shared at
+the moment they are sent, so someone who buys just before and sells just
+after also earns that round, paying the fee twice for it. Contracts don't
+earn: tokens held in a multisig or a vault earn nothing. Buybacks of a
+token run on chain without a price check; they are capped small so that
+sandwiching one doesn't pay, not prevented.
+
 **Price limits.** A swap whose price limit would stop it partway reverts. Use
 a minimum-output check for slippage protection instead.
 

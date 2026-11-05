@@ -1,6 +1,34 @@
 # Deployments
 
-## Elysium testnet (99801), rehearsal
+## Elysium testnet (99801), rehearsal of launch v1
+
+Deployed 2026-11-05 with the launch v1 contracts (one fee for life, builder
+fees, standard hook events, split payouts), in rehearsal mode, then exercised
+with `script/Rehearsal.s.sol`. Every role is the throwaway testnet wallet
+`0x157F797Dd4B1BCb689f98D35d69c54590d13d420`.
+
+| Contract | Address |
+|---|---|
+| PoolManager (rehearsal only) | `0x37752fDfCbE53605fB775e5E3b43fCE9060F1e86` |
+| MesaTokenFactory | `0x262D11500D302E9b5fd2d5D065415A2216480D1D` |
+| Create2Deployer | `0xF9be13D5e7E35230aF9597D4318Ab7BdC9138547` |
+| MesaHook | `0xE135287A21207Cf0e457a10f686932936D4CAaEc` |
+| BuybackBurner | `0xFd4D2a133ffbC045C7F80c7A196d8B2bE3e64012` |
+| $MESA (genesis) | `0xD42026B4C72394FF0850F9706C061Bd05Ee5a533` |
+| RHSL (reward token) | `0x8B52171F30993Ef62ECaCADe7D09465d21fD7436` |
+| RHSL payout | `0x63d215fd4B5fFA90d09c4Ab785195e503102D88B` |
+
+All 28 transactions succeeded: launched $MESA with its planned settings (1%
+fee, 10% sniper surcharge over 5 seconds, no buy cap, 0.002 HYPE dev buy);
+launched RHSL at 10% through a 0.5% builder with creator fees split 50/50
+between holder rewards and buyback; ran every swap kind and four round trips;
+bought through the router and forced a refund; collected the payout, paid
+holders (0.0172 HYPE) and claimed, bought back and burned 511,085 RHSL;
+claimed the builder and creator fees; collected protocol fees and bought and
+burned 508,257 $MESA; sold back. Afterwards the hook's HYPE claims equalled
+exactly what it owed. Cost: 0.0016 HYPE to deploy, 0.040 HYPE to rehearse.
+
+## Elysium testnet (99801), first rehearsal (superseded)
 
 Deployed 2026-11-04 with `script/Deploy.s.sol` in rehearsal mode (its own
 PoolManager, since Uniswap v4 is not on Elysium testnet), then exercised with
@@ -56,4 +84,55 @@ Outbox, deploy a new MesaBridge (or claim on the Outbox directly; anyone may).
 
 ## Elysium mainnet (99901)
 
-Mesa itself is not deployed.
+### Mesa (launch v1)
+
+Deployed 2026-11-05 at block ~862,800 on the official PoolManager
+(`0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1`), from the launch v1 code that
+was rehearsed below, by `0x2b8E20eA27D1Eeed651D86ee836C5916a4ED3b95` (which
+holds no role). Transactions were posted with `Inbox.sendL2Message`.
+
+| Contract | Address |
+|---|---|
+| MesaHook | `0xE928F2336051cBD5B9D4531C25EaDd13f9A82aeC` |
+| BuybackBurner | `0xcCFe02C0a8Fec0c39683aE00b35A5d4560d8E7C1` |
+| MesaTokenFactory | `0x4E395ad9938689BF6456d7f058f85c8842312f1E` |
+| Create2Deployer | `0xEaBc4276de085d63d66969d03e39BD486fbE949F` |
+
+| Role | Holder |
+|---|---|
+| Genesis launcher (launch #1, $MESA) | `0x25dB99d67481AaEb389A57ae097f2a02e48F0E13` |
+| BuybackBurner owner | `0x25dB99d67481AaEb389A57ae097f2a02e48F0E13` |
+| BuybackBurner keeper (server bot) | `0xd968d8ee37aF5fD2C735C2EF214296D5b9d5Ba1E` |
+| Quote admin | `0x25dB99d67481AaEb389A57ae097f2a02e48F0E13` |
+
+Creator share 70% of base fees, starting tick 173,200 (about 30 HYPE).
+
+### Rehearsal on mainnet (throwaway, not Mesa)
+
+The launch v1 code, deployed 2026-11-05 at separate addresses with every role
+held by a throwaway wallet (`0x2b8E20eA27D1Eeed651D86ee836C5916a4ED3b95`), on
+the official PoolManager, then exercised with `script/Rehearsal.s.sol`
+(`MAINNET_REHEARSAL=true`). Its tokens are named TEST and TEST2. It is not
+used for anything else.
+
+Before Elysium's public sequencer opened, each transaction was signed locally
+and posted with `Inbox.sendL2Message` on HyperEVM, paid by the relayer.
+
+| Contract | Address |
+|---|---|
+| MesaTokenFactory | `0xa18e7d950E02a3284DBBf92759813A4f6B70f0AA` |
+| Create2Deployer | `0xc4D1f3478107b3a8ebEb06f00E4807Da1dEc8082` |
+| MesaHook | `0x83C7C5120Fa2c8D2d87e49691331F555397c2Aec` |
+| BuybackBurner | `0xE207ec264C40bE27C823422C532beb8b25686806` |
+| TEST (genesis, $MESA's settings) | `0xc4bC87e019921f1A347A054218CF6ddA3EAa138b` |
+| TEST2 (reward token, builder fee, holders and buyback split) | `0xd538A8333256578f1BFdD297F9629a1005a08165` |
+| TEST2 payout | `0x9e9608b5F4D2DadF531bCa0d2FC61dE6bE245468` |
+
+All 3 deploy and 27 rehearsal transactions succeeded: TEST launched with
+$MESA's planned settings; TEST2 at 10% through a 0.5% builder, creator fees
+split between holders and buyback; every swap kind and four round trips; a
+router buy; holders paid 0.0144 HYPE and claimed; 428,478 TEST2 bought back
+and burned; builder and creator fees claimed; protocol fees collected and
+425,985 TEST bought and burned; everything sold back. Bots started trading
+TEST2 within minutes. The hook's HYPE claims matched exactly what it owed
+afterwards. Cost: about 0.034 HYPE.

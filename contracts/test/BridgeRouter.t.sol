@@ -6,6 +6,7 @@ import {Deployers} from "v4-core/test/utils/Deployers.sol";
 import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 
 import {MesaHook} from "../src/MesaHook.sol";
+import {MesaTokenFactory} from "../src/MesaTokenFactory.sol";
 import {MesaToken} from "../src/MesaToken.sol";
 import {MesaBridgeRouter} from "../src/MesaBridgeRouter.sol";
 
@@ -36,14 +37,22 @@ contract BridgeRouterTest is Test, Deployers {
         deployCodeTo(
             "out/MesaHook.sol/MesaHook.json",
             abi.encode(
-                manager, uint16(7_000), int24(173_200), genesis, makeAddr("o"), makeAddr("k"), 10 ether, makeAddr("qa")
+                manager,
+                uint16(7_000),
+                int24(173_200),
+                genesis,
+                makeAddr("o"),
+                makeAddr("k"),
+                10 ether,
+                makeAddr("qa"),
+                new MesaTokenFactory()
             ),
             at
         );
         hook = MesaHook(at);
         router = new MesaBridgeRouter(manager, address(hook));
         vm.prank(genesis);
-        (address t,) = hook.launch(MesaHook.LaunchParams("Mesa", "MESA", "", feeTo, 100, 100, 0, 60, 100));
+        (address t,) = hook.launch(MesaHook.LaunchParams("Mesa", "MESA", "", feeTo, 100, 0, 60, 100, address(0), 0, ""));
         token = MesaToken(t);
         vm.deal(bridged, 1_000 ether);
     }

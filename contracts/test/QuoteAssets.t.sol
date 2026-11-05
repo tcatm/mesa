@@ -15,6 +15,7 @@ import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 import {MesaHook} from "../src/MesaHook.sol";
+import {MesaTokenFactory} from "../src/MesaTokenFactory.sol";
 import {MesaToken} from "../src/MesaToken.sol";
 import {BuybackBurner} from "../src/BuybackBurner.sol";
 import {QuoteRegistry} from "../src/QuoteRegistry.sol";
@@ -56,7 +57,17 @@ contract QuoteAssetsTest is Test, Deployers {
         address at = address(FLAGS | (uint160(0x4444) << 144));
         deployCodeTo(
             "out/MesaHook.sol/MesaHook.json",
-            abi.encode(manager, uint16(7_000), INITIAL_TICK, genesis, makeAddr("owner"), keeper, 10 ether, admin),
+            abi.encode(
+                manager,
+                uint16(7_000),
+                INITIAL_TICK,
+                genesis,
+                makeAddr("owner"),
+                keeper,
+                10 ether,
+                admin,
+                new MesaTokenFactory()
+            ),
             at
         );
         hook = MesaHook(at);
@@ -85,7 +96,7 @@ contract QuoteAssetsTest is Test, Deployers {
     // ---------------------------------------------------------------- helpers
 
     function params() internal view returns (MesaHook.LaunchParams memory) {
-        return MesaHook.LaunchParams("Token", "TKN", "", feeTo, 100, 100, 0, 0, 10_000);
+        return MesaHook.LaunchParams("Token", "TKN", "", feeTo, 100, 0, 0, 10_000, address(0), 0, "");
     }
 
     /// A plain HYPE/quote pool at 1:1 with deep liquidity, for conversions.
@@ -230,7 +241,17 @@ contract QuoteAssetsTest is Test, Deployers {
         address at = address(FLAGS | (uint160(0x5555) << 144));
         deployCodeTo(
             "out/MesaHook.sol/MesaHook.json",
-            abi.encode(manager, uint16(7_000), INITIAL_TICK, genesis, makeAddr("owner"), keeper, 10 ether, admin),
+            abi.encode(
+                manager,
+                uint16(7_000),
+                INITIAL_TICK,
+                genesis,
+                makeAddr("owner"),
+                keeper,
+                10 ether,
+                admin,
+                new MesaTokenFactory()
+            ),
             at
         );
         MesaHook fresh = MesaHook(at);
@@ -292,7 +313,8 @@ contract QuoteAssetsTest is Test, Deployers {
         sellFee = uint16(bound(sellFee, 100, 1_000));
         enable(q);
         MesaHook.LaunchParams memory p = params();
-        (p.buyFeeBps, p.sellFeeBps) = (buyFee, sellFee);
+        sellFee = buyFee; // one fee for buys and sells
+        p.feeBps = buyFee;
         vm.prank(creator);
         (address a, PoolKey memory k) = hook.launchWithQuote(p, q, 0);
         MesaToken t = MesaToken(a);
@@ -363,7 +385,7 @@ contract QuoteAssetsTest is Test, Deployers {
     function test_previewMatchesFees() public {
         enable(HIGH);
         (MesaToken t,) = launchOn(HIGH, 0);
-        (uint256 base, uint256 sniper, uint256 toCreator, uint256 toProtocol) =
+        (uint256 base,, uint256 sniper, uint256 toCreator, uint256 toProtocol) =
             hook.previewFees(address(t), 1 ether, true);
         assertEq(base, 0.01 ether);
         assertEq(sniper, 0);

@@ -17,6 +17,7 @@ import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {FullMath} from "v4-core/src/libraries/FullMath.sol";
 
 import {MesaHook} from "../src/MesaHook.sol";
+import {MesaTokenFactory} from "../src/MesaTokenFactory.sol";
 import {LaunchMath} from "../src/LaunchMath.sol";
 import {MesaToken} from "../src/MesaToken.sol";
 import {BuybackBurner} from "../src/BuybackBurner.sol";
@@ -58,7 +59,17 @@ contract MesaHookTest is Test, Deployers {
         address at = address(FLAGS | (salt << 144));
         deployCodeTo(
             "MesaHook.sol:MesaHook",
-            abi.encode(manager, CREATOR_SHARE, INITIAL_TICK, genesis, owner, keeper, 10 ether, quoteAdmin),
+            abi.encode(
+                manager,
+                CREATOR_SHARE,
+                INITIAL_TICK,
+                genesis,
+                owner,
+                keeper,
+                10 ether,
+                quoteAdmin,
+                new MesaTokenFactory()
+            ),
             at
         );
         h = MesaHook(at);
@@ -96,11 +107,13 @@ contract MesaHookTest is Test, Deployers {
             symbol: "TEST",
             metadataURI: "ipfs://x",
             feeRecipient: feeTo,
-            buyFeeBps: 100,
-            sellFeeBps: 100,
+            feeBps: 100,
             sniperFeeBps: 0,
             snipeSeconds: 0,
-            maxBuyBps: 10_000
+            maxBuyBps: 10_000,
+            builder: address(0),
+            builderFeeBps: 0,
+            payout: ""
         });
     }
 
@@ -200,13 +213,13 @@ contract MesaHookTest is Test, Deployers {
 
     function test_launch_rejectsOutOfBoundsParams() public {
         MesaHook.LaunchParams memory p = params();
-        p.buyFeeBps = 1_001;
-        vm.expectRevert(abi.encodeWithSelector(MesaHook.InvalidParams.selector, "buyFeeBps"));
+        p.feeBps = 1_001;
+        vm.expectRevert(abi.encodeWithSelector(MesaHook.InvalidParams.selector, "feeBps"));
         hook.launch(p);
 
         p = params();
-        p.sellFeeBps = 99;
-        vm.expectRevert(abi.encodeWithSelector(MesaHook.InvalidParams.selector, "sellFeeBps"));
+        p.feeBps = 99;
+        vm.expectRevert(abi.encodeWithSelector(MesaHook.InvalidParams.selector, "feeBps"));
         hook.launch(p);
 
         p = params();
@@ -226,8 +239,9 @@ contract MesaHookTest is Test, Deployers {
     }
 
     function test_constructorRejectsAStartingPriceThatCannotHoldTheSupply() public {
+        MesaTokenFactory f = new MesaTokenFactory();
         vm.expectRevert(LaunchMath.BadStartTick.selector);
-        new MesaHook(manager, CREATOR_SHARE, -400_000, genesis, owner, keeper, 10 ether, quoteAdmin);
+        new MesaHook(manager, CREATOR_SHARE, -400_000, genesis, owner, keeper, 10 ether, quoteAdmin, f);
     }
 
     function test_startingMarketCapIsAbout30Hype() public {

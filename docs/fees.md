@@ -7,8 +7,8 @@ value, the contract rejects anything outside the range shown.
 
 | Parameter | Range | Meaning |
 |---|---|---|
-| Buy fee | 1% to 10% | Fee on the quote side (HYPE or the ERC-20 quote) of buys |
-| Sell fee | 1% to 10% | Fee on the quote side of sells |
+| Trading fee | 1% to 10% | One fee on the quote side (HYPE or the ERC-20 quote) of every buy and sell, fixed for the pool's life |
+| Builder fee | 0% to 1% | Add-on for the app the token was launched through, on top of the trading fee |
 | Sniper surcharge | 0% to 30% | Extra fee on buys at launch, decaying linearly to 0 |
 | Snipe window | 0 to 15 minutes | How long the surcharge and the max-buy cap last |
 | Max buy per transaction | 0.1% to 100% of supply | Cap on tokens bought in one transaction during the snipe window |
@@ -32,7 +32,7 @@ what the pool pays out to a seller before the fee.
 
 | Part | Fee recipient | Buyback and burn |
 |---|---|---|
-| Base fee | 70% | 30% |
+| Trading fee | 70% | 30% |
 | Sniper surcharge | 0% | 100% |
 
 Fees in an ERC-20 quote go to the creator in that quote. The protocol's share
@@ -40,8 +40,22 @@ is sold for HYPE through the quote's registered route, then spent on $MESA.
 
 ## Example
 
-A 1 HYPE buy with a 1% buy fee and no surcharge pays 0.01 HYPE in fees:
+A 1 HYPE buy with a 1% fee and no surcharge pays 0.01 HYPE in fees:
 0.007 HYPE to the creator's fee recipient and 0.003 HYPE to buyback and burn.
 The same buy in the first second of a launch with a 30% surcharge over 10
 minutes pays 0.31 HYPE: still 0.007 HYPE to the creator, and 0.303 HYPE to
 buyback and burn.
+
+Through a builder charging 0.5%, the same 1 HYPE buy at a 2% fee pays 0.025
+HYPE: 0.014 HYPE to the creator side, 0.006 HYPE to buyback and burn, 0.005
+HYPE to the builder.
+
+## Creator splits
+
+| Part | Limit |
+|---|---|
+| Payout wallets | up to 5 |
+| Holder rewards | wallets holding at least 1,000,000 tokens (0.1% of supply), in proportion to balance; paid at most every 10 minutes, once 0.01 HYPE is waiting |
+| Buyback of the token | at most 0.25 HYPE per buyback, at most every 10 minutes |
+
+The shares add up to 100% of the creator side and are fixed at launch.
