@@ -506,4 +506,25 @@ contract PayoutsTest is Test, Deployers {
         }
         assertApproxEqAbs(claimed + left + token.pending(), given, 100, "only rounding dust is lost");
     }
+
+    /// Far past a $1M market cap: a buy of 100,000 HYPE (about 8M dollars) into a
+    /// fresh pool and a sale of everything back both work, the price moves as a
+    /// constant-product curve should, and the hook stays exactly solvent.
+    function test_hugeMarketCapsTradeNormally() public {
+        (address t, PoolKey memory k) = launch(params());
+        vm.deal(alice, 200_000 ether);
+        uint256 tokens = buy(alice, k, 100_000 ether);
+        // 99,000 HYPE in after the fee, on a 30 HYPE virtual reserve: all but ~0.03% of supply.
+        assertGt(tokens, SUPPLY * 9_996 / 10_000);
+        assertLt(tokens, SUPPLY);
+        uint256 more = buy(bob, k, 1 ether);
+        assertGt(more, 0, "the pool never runs out");
+        uint256 before = alice.balance;
+        sell(alice, k, t, tokens);
+        uint256 back = alice.balance - before;
+        // Back out is what went in, less two 1% fees and what Bob's buy added.
+        assertApproxEqRel(back, 100_000 ether * 99 / 100 * 99 / 100, 0.001e18);
+        uint256 owed = hook.accrued(feeTo) + hook.accrued(address(burner)) + hook.accrued(genesis);
+        assertEq(manager.balanceOf(address(hook), 0), owed, "hook claims == accrued");
+    }
 }
