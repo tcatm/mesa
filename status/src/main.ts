@@ -106,10 +106,13 @@ async function checkRelay(): Promise<Check> {
   try {
     const h = await getJson(`${RELAY_URL}/health`)
     const balance = parseFloat(String(h.relayerBalance ?? '0'))
-    const low = balance < 0.02
+    // Each relayed transaction costs the relayer HyperEVM gas (about 0.0005
+    // HYPE when HyperEVM is busy): below 0.1 HYPE it needs topping up soon.
+    const low = balance < 0.1
     return {
       state: low ? 'degraded' : 'up',
-      note: low ? 'Relayer balance low: relaying may stop' : 'Relaying',
+      note: low ? 'Relayer balance low: needs a top-up soon' : 'Relaying',
+      relaysLeft: Math.floor(balance / 0.0005),
       mode: h.mode,
       relayer: h.relayer,
       relayerBalance: balance,
@@ -123,6 +126,17 @@ async function checkRelay(): Promise<Check> {
     }
   } catch (e) {
     return { state: 'down', note: `Not responding (${msg(e)})` }
+  }
+}
+
+/** $MESA's buyback and burn, from the terminal API (not an uptime check). */
+async function mesaBurns() {
+  try {
+    const m = await getJson(`${INDEXER_URL}/mesa`)
+    if (!m.token) return null
+    return { token: m.token, burned: m.burned, burnedPct: m.burnedPct, hypeSpent: m.hypeSpent, buybacks: m.buybacks, lastAt: m.lastAt }
+  } catch {
+    return null
   }
 }
 
@@ -192,7 +206,7 @@ function daily(service: string): (number | null)[] {
 
 async function tick() {
   const ref = await references()
-  const [node, relay, indexer] = await Promise.all([checkNode(ref), checkRelay(), checkIndexer()])
+  const [node, relay, indexer, mesa] = await Promise.all([checkNode(ref), checkRelay(), checkIndexer(), mesaBurns()])
   const now = Date.now()
   const insert = db.prepare('INSERT INTO checks (ts, service, state) VALUES (?, ?, ?)')
   const checks: Record<string, Check> = { node, relay, indexer }
@@ -209,6 +223,7 @@ async function tick() {
       ]),
     ),
     host: host(),
+    mesa,
   }
 }
 

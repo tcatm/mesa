@@ -6,19 +6,19 @@ export const page = /* html */ `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mesa status</title>
 <meta name="description" content="Live health, sync and uptime of Mesa's Elysium node, RPC and API.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 19 L7 10 L8 8 L16 8 L17 10 L22 19 Z' fill='%23e7a55a'/%3E%3C/svg%3E">
+<link rel="icon" href="https://mesa.cx/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
 <style>
-  /* Mesa palette, as in mesa-frontend/src/styles.css: night on the mesa */
+  /* Mesa palette, as on mesa.cx: charcoal and mint */
   :root {
     color-scheme: dark;
-    --night: oklch(0.16 0.004 60); --ridge-1: oklch(0.2 0.005 60); --ridge-2: oklch(0.25 0.008 60);
-    --ridge-3: oklch(0.32 0.012 55); --ridge-4: oklch(0.42 0.02 55);
-    --mist: oklch(0.72 0.012 70); --snow: oklch(0.95 0.006 80);
-    --sand: oklch(0.77 0.13 63); --sage: oklch(0.72 0.07 160); --clay: oklch(0.66 0.13 35);
-    --line: oklch(0.72 0.012 70 / 18%);
+    --night: #1b1b1b; --ridge-1: #222424; --ridge-2: #2b2e2e;
+    --ridge-3: #363a3a; --ridge-4: #4a4f4f;
+    --mist: #9aa5a3; --snow: #eef6f4;
+    --sand: #b6ffee; --amber: #f2b45c; --sage: #7fd3b0; --clay: #e5786d;
+    --line: rgba(182, 255, 238, 0.12);
     --display: "Louize", "Instrument Serif", ui-serif, Georgia, serif;
   }
   * { box-sizing: border-box; }
@@ -28,7 +28,7 @@ export const page = /* html */ `<!doctype html>
   }
   .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
   main { max-width: 960px; margin: 0 auto; padding: 32px 16px 64px; }
-  nav { position: sticky; top: 16px; z-index: 10; display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 20px; border: 1px solid var(--line); border-radius: 999px; background: oklch(0.2 0.005 60 / 75%); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); margin-bottom: 40px; }
+  nav { position: sticky; top: 16px; z-index: 10; display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 20px; border: 1px solid var(--line); border-radius: 999px; background: rgba(34, 36, 36, 0.75); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); margin-bottom: 40px; }
   nav a.brand { display: flex; align-items: center; gap: 8px; color: var(--snow); text-decoration: none; font: 400 24px/1 var(--display); }
   nav .live { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--mist); font: 500 10px/1 "JetBrains Mono", monospace; letter-spacing: 0.16em; text-transform: uppercase; padding: 10px 14px; border-radius: 999px; background: var(--ridge-2); }
   .eyebrow { font: 500 12px/1 "JetBrains Mono", monospace; letter-spacing: 0.2em; text-transform: uppercase; color: var(--sand); margin: 0; }
@@ -43,7 +43,7 @@ export const page = /* html */ `<!doctype html>
   .banner b { font: 400 28px/1.1 var(--display); }
   .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--mist); box-shadow: 0 0 0 4px rgba(143,163,184,.12); }
   .dot.up { background: var(--sage); box-shadow: 0 0 0 4px rgba(127,181,154,.16); }
-  .dot.degraded { background: var(--sand); box-shadow: 0 0 0 4px rgba(232,161,90,.16); }
+  .dot.degraded { background: var(--amber); box-shadow: 0 0 0 4px rgba(242,180,92,.16); }
   .dot.down { background: var(--clay); box-shadow: 0 0 0 4px rgba(217,115,91,.18); }
   .grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
   @media (min-width: 760px) { .grid { grid-template-columns: 1fr 1fr; } .wide { grid-column: 1 / -1; } }
@@ -57,7 +57,7 @@ export const page = /* html */ `<!doctype html>
   .bar i { display: block; height: 100%; background: var(--sand); border-radius: 99px; transition: width .6s ease; }
   .days { display: grid; grid-template-columns: repeat(30, 1fr); gap: 3px; margin-top: 14px; height: 26px; }
   .days span { border-radius: 3px; background: var(--ridge-2); }
-  .days span.ok { background: var(--sage); } .days span.part { background: var(--sand); } .days span.bad { background: var(--clay); }
+  .days span.ok { background: var(--sage); } .days span.part { background: var(--amber); } .days span.bad { background: var(--clay); }
   .uptime { display: flex; justify-content: space-between; color: var(--mist); font-size: 12px; margin-top: 6px; }
   .uptime b { color: var(--snow); font-weight: 500; }
   footer { color: var(--mist); font-size: 12.5px; text-align: center; padding: 0 16px 28px; }
@@ -69,14 +69,14 @@ export const page = /* html */ `<!doctype html>
 <main>
   <nav aria-label="Mesa">
     <a class="brand" href="https://mesa.cx">
-      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="var(--sand)" d="M2 19 L7 10 L8 8 L16 8 L17 10 L22 19 Z"/><path fill="var(--night)" opacity=".25" d="M16 8 L17 10 L22 19 L18 19 L15 10 Z"/></svg>
+      <svg width="30" height="16" viewBox="0 0 1066 560" aria-hidden="true"><path fill="var(--sand)" d="M240 0 L422 0 L533 259 L382 259 L253 560 L0 560 Z M644 0 L826 0 L937 259 L786 259 L657 560 L404 560 Z M937 259 L1066 560 L808 560 Z"/></svg>
       Mesa
     </a>
     <span class="live"><span id="nav-dot" class="dot"></span><span id="checked">loading</span></span>
   </nav>
   <p class="eyebrow">Status</p>
   <h1>Is the mesa up?</h1>
-  <p class="lede">Live health of Mesa's own Elysium node, the wallet RPC and the terminal API. Checked every 15 seconds.</p>
+  <p class="lede">Live health of Mesa's own Elysium node, the wallet RPC and the terminal API, and the $MESA buyback and burn. Checked every 15 seconds.</p>
 
   <section class="scene grain" aria-label="Overall status">
     <svg viewBox="0 0 960 150" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
@@ -94,6 +94,7 @@ export const page = /* html */ `<!doctype html>
     <article class="card wide" id="node"></article>
     <article class="card" id="relay"></article>
     <article class="card" id="indexer"></article>
+    <article class="card wide" id="mesa"></article>
     <article class="card wide" id="host"></article>
   </div>
 </main>
@@ -137,8 +138,11 @@ export const page = /* html */ `<!doctype html>
       ]) + days(n)
     $('relay').innerHTML = head(r, 'Wallet RPC', 'rpc.mesa.cx') + kv([
       ['Mode', r.mode === 'inbox' ? 'via HyperEVM inbox' : esc(r.mode || '—')],
-      ['Relayer balance', r.relayerBalance === undefined ? '—' : num(r.relayerBalance, 4) + ' HYPE'],
-      ['Relayed', num(r.relayedTotal)],
+      ['Relayer', r.relayer ? '<a href="https://hyperevmscan.io/address/' + esc(r.relayer) + '" target="_blank" rel="noreferrer" style="color:var(--sand)">' + esc(r.relayer.slice(0, 6) + '…' + r.relayer.slice(-4)) + '</a>' : '—'],
+      ['Relayer balance (HyperEVM)', r.relayerBalance === undefined ? '—' : num(r.relayerBalance, 4) + ' HYPE'],
+      ['Enough for about', r.relaysLeft === undefined ? '—' : num(r.relaysLeft) + ' transactions'],
+      ['Waiting to land', num(r.pending)],
+      ['Relayed since restart', num(r.relayedTotal)],
       ['Refused', num(Object.values(r.rejected || {}).reduce((a, b) => a + b, 0))],
       ['Spent this hour', r.spentLastHour === undefined ? '—' : num(parseFloat(r.spentLastHour), 5) + ' / ' + r.budgetPerHour + ' HYPE'],
       ['Last relay', ago(r.lastRelayAt)],
@@ -149,6 +153,13 @@ export const page = /* html */ `<!doctype html>
       ['Tokens launched', num(i.tokensLaunched)],
       ['Trades (24h)', num(i.trades24h)],
     ]) + days(i)
+    const m = d.mesa
+    $('mesa').innerHTML = m ? '<h2><span class="dot ' + (m.lastAt && Date.now() / 1000 - m.lastAt < 3600 ? 'up' : 'degraded') + '"></span>$MESA buyback and burn<span class="host">every 10 min</span></h2><p class="note">30% of the fees of every token launched on Mesa buys $MESA and burns it</p>' + kv([
+      ['Burned', num(m.burned) + ' MESA (' + num(m.burnedPct, 2) + '% of supply)'],
+      ['HYPE spent buying it back', num(m.hypeSpent, 4) + ' HYPE'],
+      ['Buybacks', num(m.buybacks)],
+      ['Last burn', m.lastAt ? ago(new Date(m.lastAt * 1000).toISOString()) : 'none yet'],
+    ]) : '<h2><span class="dot"></span>$MESA buyback and burn</h2><p class="note">No data yet</p>'
     const h = d.host
     $('host').innerHTML = '<h2><span class="dot ' + (h ? 'up' : 'down') + '"></span>Server<span class="host">' + (h ? h.cpus + ' cores' : '') + '</span></h2><p class="note">' + (h ? 'Up ' + dur(h.uptimeSeconds) : 'No data') + '</p>' + (h ? kv([
       ['Load (1m / 5m / 15m)', h.load.map((x) => num(x, 2)).join(' / ')],
