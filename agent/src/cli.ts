@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * The mesa command line: the same things as the MCP server, for scripts and
  * for agents that drive a shell.
@@ -29,7 +30,7 @@ Your agent wallet (MESA_PRIVATE_KEY):
 
 Settings: MESA_PRIVATE_KEY, MESA_MAX_HYPE (per-transaction cap, default 1),
 MESA_SLIPPAGE_BPS (default 300), MESA_BUILDER + MESA_BUILDER_FEE (builder fee on launches).
-Output is JSON. Docs: https://mesa.cx/docs#agents`;
+Output is readable in a terminal and JSON in pipes or with --json. Docs: https://mesa.cx/docs#agents`;
 
 function flags(args: string[]) {
   const pos: string[] = [];
@@ -113,9 +114,53 @@ async function main() {
   }
 }
 
+/** Short, readable output for a person at a terminal; JSON for pipes, scripts and --json. */
+const compact = (v: number) =>
+  v >= 1e6 ? `${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(2)}K` : v.toLocaleString("en-US", { maximumFractionDigits: 4 });
+const whole = (s: string) => Number(s).toLocaleString("en-US", { maximumFractionDigits: Number(s) >= 1000 ? 0 : 4 });
+function pretty(cmd: string | undefined, out: any): string | null {
+  const shortTx = (h: string) => `mesa.cx/tx/${h.slice(0, 6)}…`;
+  switch (cmd) {
+    case "balance":
+      return Object.entries(out)
+        .filter(([k]) => k !== "address")
+        .map(([k, v]) => `${k.padEnd(10)} ${whole(String(v)).padStart(12)}   ready`)
+        .join("\n");
+    case "tokens":
+      return (out.tokens as any[])
+        .map((t) => {
+          const chg = Number(t.change24h ?? 0);
+          const mc = Number(t.marketCapHype ?? 0);
+          return `$${String(t.symbol).padEnd(10)} ${(mc >= 1000 ? compact(mc) : mc.toFixed(0)).padStart(6)} HYPE  ${(chg >= 0 ? "+" : "") + (Math.abs(chg) >= 1000 ? compact(chg) : chg.toFixed(1))}%`;
+        })
+        .join("\n");
+    case "quote":
+      return `you get  ≥ ${whole(out.minimumOut)} ${String(out.unit).replace("$", "")}\nexpected   ${whole(out.amountOut)}`;
+    case "buy":
+      return out.status === "success"
+        ? `✓ ${whole(out.expected)} ${out.symbol} · ${shortTx(out.hash)}`
+        : `${out.status} · ${out.explorer}`;
+    case "sell":
+      return out.status === "success" ? `✓ sold ${whole(out.sold)} ${out.symbol} for ~${whole(out.expectedHype)} HYPE · ${shortTx(out.hash)}` : `${out.status} · ${out.explorer}`;
+    case "launch":
+      return out.token
+        ? `✓ launched · ${out.chart}\n70% of every fee to this agent, in HYPE`
+        : `${out.status} · ${out.explorer}`;
+    case "fees":
+      return `${whole(out.claimableHype)} HYPE claimable`;
+    case "claim":
+      return out.status === "success" ? `✓ claimed ${whole(out.claimedHype)} HYPE · ${shortTx(out.hash)}` : `${out.status} · ${out.explorer}`;
+    default:
+      return null;
+  }
+}
+
 main().then(
   (out) => {
-    if (out !== undefined) console.log(JSON.stringify(out, null, 2));
+    if (out === undefined) return;
+    const wantJson = process.argv.includes("--json") || !process.stdout.isTTY;
+    const text = wantJson ? null : pretty(process.argv[2], out);
+    console.log(text ?? JSON.stringify(out, null, 2));
   },
   (e: unknown) => {
     console.error(`mesa: ${e instanceof Error ? e.message : String(e)}`);
