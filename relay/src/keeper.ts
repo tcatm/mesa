@@ -32,6 +32,9 @@ const ROUND = Number(env.ROUND_MIN ?? 10) * 60_000
 const CHUNK = utils.parseEther(env.CHUNK_HYPE ?? '0.25')
 const MIN = utils.parseEther(env.MIN_HYPE ?? '0.02')
 const SLIPPAGE = BigNumber.from(env.SLIPPAGE_BPS ?? 300)
+// A max fee well above Elysium's base fee, so a relayed transaction still
+// clears it a minute later; only the base fee is ever charged.
+const FEES = { maxFeePerGas: utils.parseUnits(env.MAX_FEE_GWEI ?? '1', 'gwei'), maxPriorityFeePerGas: 0 }
 
 const hook = new Contract(
   HOOK,
@@ -66,7 +69,7 @@ async function waitFor(hash: string) {
 async function round() {
   const accrued: BigNumber = await hook.accrued(BURNER)
   if (accrued.gt(0)) {
-    const tx = await burner.collect({ gasLimit: 200_000 })
+    const tx = await burner.collect({ gasLimit: 200_000, ...FEES })
     await waitFor(tx.hash)
     log({ collected: utils.formatEther(accrued), tx: tx.hash })
   }
@@ -77,7 +80,7 @@ async function round() {
   const key = await hook.poolKeyOf(mesa)
   const [quoted]: [BigNumber] = await quoter.callStatic.quoteExactInputSingle({ poolKey: key, zeroForOne: true, exactAmount: hypeIn, hookData: '0x' })
   const minOut = quoted.mul(BigNumber.from(10_000).sub(SLIPPAGE)).div(10_000)
-  const tx = await burner.buyback(hypeIn, minOut, { gasLimit: 600_000 })
+  const tx = await burner.buyback(hypeIn, minOut, { gasLimit: 600_000, ...FEES })
   await waitFor(tx.hash)
   log({ boughtBack: utils.formatEther(hypeIn), minMesa: utils.formatEther(minOut), backlog: utils.formatEther(balance.sub(hypeIn)), tx: tx.hash })
 }
