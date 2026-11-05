@@ -10,8 +10,8 @@ const pmAbi = new utils.Interface([
   'event Swap(bytes32 indexed id, address indexed sender, int128 amount0, int128 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee)',
 ])
 const mesaAbi = new utils.Interface([
-  'event Launched(address indexed token, bytes32 indexed poolId, address indexed creator, address quote, address feeRecipient, string name, string symbol, string metadataURI, uint16 buyFeeBps, uint16 sellFeeBps, uint16 sniperFeeBps, uint32 snipeSeconds, uint16 maxBuyBps, uint256 devBuyQuote, uint256 devBuyTokens)',
-  'event FeesTaken(bytes32 indexed poolId, bool buy, uint256 baseFee, uint256 sniperFee)',
+  'event Launched(address indexed token, bytes32 indexed poolId, address indexed creator, address quote, address feeRecipient, string name, string symbol, string metadataURI, uint16 feeBps, address builder, uint16 builderFeeBps, uint16 sniperFeeBps, uint32 snipeSeconds, uint16 maxBuyBps, uint256 devBuyQuote, uint256 devBuyTokens)',
+  'event FeesTaken(bytes32 indexed poolId, bool buy, uint256 baseFee, uint256 builderFee, uint256 sniperFee)',
   'event Bought(uint256 hypeIn, uint256 mesaBurned)',
 ])
 const erc20 = new utils.Interface([
@@ -283,7 +283,8 @@ export class Indexer {
       const e = mesaAbi.parseLog(l).args
       const k = `${lc(l.transactionHash)}:${lc(e.poolId)}`
       const list = fees.get(k) ?? []
-      list.push({ base: units(e.baseFee, 18), sniper: units(e.sniperFee, 18) })
+      // The builder add-on counts as part of the base fee.
+      list.push({ base: units(e.baseFee, 18) + units(e.builderFee, 18), sniper: units(e.sniperFee, 18) })
       fees.set(k, list)
     }
     const mesaHook = this.n.mesa ? lc(this.n.mesa.hook) : null
@@ -391,8 +392,11 @@ export class Indexer {
           creator: lc(e.creator),
           fee_recipient: lc(e.feeRecipient),
           metadata_uri: e.metadataURI,
-          buy_fee_bps: e.buyFeeBps,
-          sell_fee_bps: e.sellFeeBps,
+          // One fee on buys and sells.
+          buy_fee_bps: e.feeBps,
+          sell_fee_bps: e.feeBps,
+          builder: e.builder === ZERO ? null : lc(e.builder),
+          builder_fee_bps: e.builderFeeBps,
           sniper_fee_bps: e.sniperFeeBps,
           snipe_seconds: e.snipeSeconds,
           max_buy_bps: e.maxBuyBps,

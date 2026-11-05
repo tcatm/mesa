@@ -50,7 +50,7 @@ export const networks: Record<string, Network> = {
     poolManagers: [{ address: '0xde6d3e1938a0546074c67c04edf8aaf6acb2419f', name: 'Mesa rehearsal' }],
     venues: { '0xdc9de61da0abd148dd36dcc380803b86dbe72aec': 'Mesa' },
     hype: [ZERO, '0xcd57f65c2b0e5881cfc2e609f7cd53b746e1f234'],
-    mesa: { hook: '0xdc9de61da0abd148dd36dcc380803b86dbe72aec', burner: '0x60d13a743d7256586a46e22e7dd2b937357630bd' },
+    mesa: { hook: '0xe135287a21207cf0e457a10f686932936d4caaec', burner: '0xfd4d2a133ffbc045c7f80c7a196d8b2be3e64012' },
     startBlock: 23_212_142,
     range: 2_000,
   },
