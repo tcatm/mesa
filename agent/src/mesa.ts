@@ -178,6 +178,14 @@ export class Mesa {
   burns() {
     return get<Record<string, unknown>>(`/mesa`);
   }
+  /** A token's build log: signed updates from its team, newest first. */
+  async updates(address: string, limit = 20) {
+    address = await this.resolve(address);
+    return get<{ author: string; text: string; link: string | null; time: number }[]>(
+      `/tokens/${address.toLowerCase()}/updates?limit=${Math.min(limit, 200)}`,
+    );
+  }
+
   /** What Mesa's indexer knows about a transaction: trades, launches, burns. */
   transaction(hash: string) {
     if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) throw new Error(`Not a transaction hash: ${hash}`);
@@ -349,6 +357,30 @@ export class Mesa {
     if (Number(claimableHype) <= 0) throw new Error("Nothing to claim yet.");
     const res = await this.send({ to: MESA_HOOK, data: encodeFunctionData({ abi: hookAbi, functionName: "claim" }), value: 0n });
     return { ...res, claimedHype: claimableHype };
+  }
+
+  /**
+   * Post to a token's build log, signed by this wallet. Only the token's
+   * creator or fee wallet can post. Free: a signature, not a transaction.
+   */
+  async postUpdate(token: string, text: string, link?: string) {
+    const { account } = this.need();
+    const t = (await this.resolve(token)).toLowerCase();
+    const body = text.trim();
+    if (!body || [...body].length > 280) throw new Error("Update: 1 to 280 characters.");
+    const l = link?.trim() ?? "";
+    if (l && !/^https:\/\/\S+$/.test(l)) throw new Error("Link: a full https:// link.");
+    const time = Math.floor(Date.now() / 1000);
+    const message = `Mesa build log\nToken: ${t}\nUpdate: ${body}\nLink: ${l || "-"}\nTime: ${time}`;
+    const signature = await account.signMessage({ message });
+    const r = await fetch(`${API}/updates`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: t, text: body, link: l || null, time, signature }),
+    });
+    const out = (await r.json().catch(() => ({}))) as { error?: string };
+    if (!r.ok) throw new Error(out.error ?? `Couldn't post (${r.status}).`);
+    return { posted: true, token: t, text: body, link: l || null, page: `https://mesa.cx/markets/elysium/${t}` };
   }
 
   /** Hand a token's fee wallet to someone else; they must accept it. */

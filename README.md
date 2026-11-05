@@ -72,7 +72,7 @@ Or add the MCP server yourself:
 }
 ```
 
-16 tools: read every Elysium launchpad, quote, buy, sell, launch, claim fees. Read-only without a key. Give the agent a
+18 tools: read every Elysium launchpad, quote, buy, sell, launch, claim fees, read and post to build logs. Read-only without a key. Give the agent a
 fresh wallet, never yours; `MESA_MAX_HYPE` caps every transaction. Tickers like `$MESA` resolve to the most-held token,
 not a copy. The same package is a CLI (`mesa buy $MESA 0.5`) and an SDK. Details: [agent/](agent/).
 

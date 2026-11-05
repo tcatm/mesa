@@ -16,7 +16,7 @@ import { Mesa } from "./mesa.js";
 
 const mesa = Mesa.fromEnv();
 const server = new McpServer(
-  { name: "mesa", version: "0.1.0" },
+  { name: "mesa", version: "0.2.0" },
   {
     instructions:
       "Mesa is the launchpad for builders on Elysium, the Hyperliquid L2 (chain 99901, gas in HYPE). " +
@@ -70,6 +70,11 @@ server.registerTool(
   "get_holders",
   { title: "Top holders", description: "A token's largest holders, with their share of supply.", inputSchema: { token: token, limit: z.number().int().min(1).max(200).optional() } },
   (a) => run(() => mesa.holders(a.token, a.limit ?? 20)),
+);
+server.registerTool(
+  "get_updates",
+  { title: "Build log", description: "A token's build log: short updates its team signed with the creator's wallet, newest first. A sign of whether a team is shipping.", inputSchema: { token, limit: z.number().int().min(1).max(100).optional() } },
+  (a) => run(() => mesa.updates(a.token, a.limit ?? 20)),
 );
 server.registerTool(
   "get_candles",
@@ -148,6 +153,15 @@ server.registerTool(
     },
   },
   (a) => run(() => mesa.launch(a)),
+);
+server.registerTool(
+  "post_update",
+  {
+    title: "Post a build update",
+    description: "Post a short update (what shipped, a demo, a repo) to a token's build log on mesa.cx, signed by the agent wallet. Only the token's creator or fee wallet can post. Free: no transaction.",
+    inputSchema: { token, text: z.string().min(1).max(280), link: z.string().url().optional().describe("https link") },
+  },
+  (a) => run(() => mesa.postUpdate(a.token, a.text, a.link)),
 );
 server.registerTool(
   "claim_fees",

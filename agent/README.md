@@ -35,8 +35,8 @@ Leave `MESA_PRIVATE_KEY` out for read-only.
 | `get_token` price, holders, launch settings, forensics | `sell` an amount, `all` or `50%` |
 | `get_trades`, `get_holders`, `get_candles` | `launch_token` on Mesa |
 | `get_portfolio`, `get_balance` | `claim_fees` in HYPE |
-| `market_stats`, `mesa_burns`, `explain_transaction` | |
-| `quote`, `claimable_fees` | |
+| `market_stats`, `mesa_burns`, `explain_transaction` | `post_update` to the token's build log |
+| `quote`, `claimable_fees`, `get_updates` | |
 
 ## Safety
 

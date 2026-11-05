@@ -18,6 +18,7 @@ Reading (no setup):
   mesa quote buy <token> <hype>
   mesa quote sell <token> <amount>
   mesa tx <hash>
+  mesa updates <token>          the token's build log
 
 Your agent wallet (MESA_PRIVATE_KEY):
   mesa balance [token]
@@ -25,6 +26,7 @@ Your agent wallet (MESA_PRIVATE_KEY):
   mesa buy <token> <hype>
   mesa sell <token> <amount|all|50%>
   mesa launch --name "Keystone" --symbol KEY [--fee 1] [--dev-buy 0.1] [--description ...] [--image https://...]
+  mesa update <token> "shipped v0.2" [--link https://...]   post to the build log
   mesa fees           claimable HYPE fees
   mesa claim          claim them
 
@@ -99,6 +101,10 @@ async function main() {
         sniperPct: num("sniper"),
         snipeSeconds: num("snipe-seconds"),
       });
+    case "updates":
+      return mesa.updates(need(0, "token"), num("limit") ?? 20);
+    case "update":
+      return mesa.postUpdate(need(0, "token"), need(1, "update text"), f["link"]);
     case "fees":
       return mesa.claimable(pos[0]);
     case "claim":
@@ -148,6 +154,8 @@ function pretty(cmd: string | undefined, out: any): string | null {
         : `${out.status} · ${out.explorer}`;
     case "fees":
       return `${whole(out.claimableHype)} HYPE claimable`;
+    case "update":
+      return `✓ posted to the build log · ${out.page.replace("https://", "")}`;
     case "claim":
       return out.status === "success" ? `✓ claimed ${whole(out.claimedHype)} HYPE · ${shortTx(out.hash)}` : `${out.status} · ${out.explorer}`;
     default:

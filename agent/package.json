@@ -1,6 +1,6 @@
 {
   "name": "mesa-agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Mesa for AI agents: read Elysium's markets, trade, launch tokens and claim fees, from an MCP server, a CLI or a TypeScript SDK.",
   "type": "module",
   "license": "MIT",
