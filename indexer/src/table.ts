@@ -230,8 +230,7 @@ export function tableBuilder(db: DatabaseSync, n: Network) {
       })
     }
     // Tickers used by more than one token: the first launch of a ticker is
-    // its OG, the rest are duplicates. Copies of $MESA's name or ticker are
-    // hidden: there is only one $MESA.
+    // its OG, the rest are duplicates.
     const genesis = (one(`SELECT token FROM mesa_launches WHERE genesis = 1`)?.token as string | undefined) ?? null
     const byTicker = new Map<string, Row[]>()
     for (const r of rows) {
@@ -248,11 +247,13 @@ export function tableBuilder(db: DatabaseSync, n: Network) {
           r.ogAddress = list[0]!.address
         })
       }
-      if (genesis && k === 'mesa') for (const r of list) if (r.address !== genesis) r.spam = true
     }
+    // Exact copies of $MESA (name "Mesa" and ticker "MESA") are hidden.
+    // Anything else goes: MesaCat, MesaDoge, "Mesa" with another ticker.
     if (genesis) {
       for (const r of rows) {
-        if (r.address !== genesis && String(r.name ?? '').trim().toLowerCase() === 'mesa') r.spam = true
+        const exact = String(r.name ?? '').trim().toLowerCase() === 'mesa' && String(r.symbol ?? '').trim().toLowerCase() === 'mesa'
+        if (exact && r.address !== genesis) r.spam = true
       }
     }
     return rows
