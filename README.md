@@ -1,19 +1,20 @@
 <div align="center">
 
-<img src="brand/png/mesa-wide-mint-1300.png" alt="Mesa" width="140">
+<img src="brand/png/mesa-banner.png" alt="Mesa: the launchpad for builders" width="100%">
 
 # Mesa
 
 **The launchpad for builders on Elysium.**
 
-Launch the token for what you're building, earn HYPE from its trading for life, and let holders verify everything on chain. With a terminal and bridge for [Elysium](https://elysium.kinetiq.xyz), the Hyperliquid L2.
+Launch the token for what you're building, earn HYPE from its trading for life, and let holders verify everything on chain. With a terminal, an explorer, a bridge and an agent toolkit for [Elysium](https://elysium.kinetiq.xyz), the Hyperliquid L2.
 
 [![ci](https://github.com/tcatm/mesa/actions/workflows/ci.yml/badge.svg)](https://github.com/tcatm/mesa/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-B6FFEE?labelColor=1B1B1B)](LICENSE)
-[![chain: Elysium 99901](https://img.shields.io/badge/chain-Elysium%2099901-B6FFEE?labelColor=1B1B1B)](https://elysium.kinetiq.xyz/explorer)
+[![chain: Elysium 99901](https://img.shields.io/badge/chain-Elysium%2099901-B6FFEE?labelColor=1B1B1B)](https://mesa.cx/explorer)
+[![agents: MCP](https://img.shields.io/badge/agents-MCP%20%C2%B7%20CLI%20%C2%B7%20SDK-B6FFEE?labelColor=1B1B1B)](agent/)
 [![status](https://img.shields.io/badge/status-live-B6FFEE?labelColor=1B1B1B)](https://status.mesa.cx)
 
-[**mesa.cx**](https://mesa.cx) · [Launch](https://mesa.cx/launch) · [Terminal](https://mesa.cx/terminal) · [Bridge](https://mesa.cx/bridge) · [Docs](https://mesa.cx/docs) · [Status](https://status.mesa.cx)
+[**mesa.cx**](https://mesa.cx) · [Launch](https://mesa.cx/launch) · [Terminal](https://mesa.cx/terminal) · [Bridge](https://mesa.cx/bridge) · [Explorer](https://mesa.cx/explorer) · [Agents](https://mesa.cx/llms.txt) · [Docs](https://mesa.cx/docs) · [Status](https://status.mesa.cx)
 
 </div>
 
@@ -26,6 +27,8 @@ Launch the token for what you're building, earn HYPE from its trading for life, 
 | **Launchpad** | Launch your project's token in one transaction. 1B supply, all of it in a Uniswap v4 pool, liquidity locked forever, revenue in HYPE for life. |
 | **Terminal** | Every token on every Elysium launchpad, indexed from our own node: live charts, forensics, one-click trading. |
 | **Bridge** | HYPE between HyperEVM and Elysium through Elysium's official bridge, 1:1, no fee on top. |
+| **Explorer** | [mesa.cx/explorer](https://mesa.cx/explorer): every block, transaction and address, explained in plain words, bridge transfers traced to HyperEVM. |
+| **For AI agents** | An MCP server, the `mesa` CLI and a TypeScript SDK: agents read markets, trade under a spend cap, launch and claim fees. |
 | **RPC** | [`https://rpc.mesa.cx`](https://status.mesa.cx), chain ID `99901`, served from Mesa's own Elysium node. |
 
 ## $MESA
@@ -46,6 +49,32 @@ someone launches on Mesa  →  every trade pays a fee in HYPE  →  30% buys $ME
 - **Pay the team, reward holders.** Split your side across up to five wallets, holders of 0.1%+, or buybacks of your own token.
 - **Builder fees.** Apps that launch tokens through Mesa can take up to 1% on top of every trade, for life: `mesa.cx/launch?builder=0x…&builderFee=0.5`.
 - **Coming next:** a builder dashboard and SDK, verified builder profiles, and shielded HYPE.
+
+## For AI agents
+
+Give your agent one line:
+
+```
+Set up Mesa for this agent: https://mesa.cx/llms.txt
+```
+
+Or add the MCP server yourself:
+
+```json
+{
+  "mcpServers": {
+    "mesa": {
+      "command": "npx",
+      "args": ["-y", "--package=https://mesa.cx/agent/mesa-agent.tgz", "mesa-mcp"],
+      "env": { "MESA_PRIVATE_KEY": "0x…", "MESA_MAX_HYPE": "0.5" }
+    }
+  }
+}
+```
+
+16 tools: read every Elysium launchpad, quote, buy, sell, launch, claim fees. Read-only without a key. Give the agent a
+fresh wallet, never yours; `MESA_MAX_HYPE` caps every transaction. Tickers like `$MESA` resolve to the most-held token,
+not a copy. The same package is a CLI (`mesa buy $MESA 0.5`) and an SDK. Details: [agent/](agent/).
 
 ## How a launch works
 
