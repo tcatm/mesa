@@ -53,7 +53,7 @@ services:
       MESA_HOOK: "0xE928F2336051cBD5B9D4531C25EaDd13f9A82aeC"
       # Launch-day headroom: the relayer pays about 0.00016 HYPE per relayed
       # transaction on HyperEVM, so 1,500 an hour stays under 0.5 HYPE.
-      MAX_HYPE_PER_HOUR: "0.5"
+      MAX_HYPE_PER_HOUR: "2"
       MAX_RELAYS_PER_HOUR: "1500"
       # Wallets and pages poll hard; 600 reads a minute per IP was too low.
       READ_PER_IP_PER_MIN: "2400"

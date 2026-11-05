@@ -216,15 +216,30 @@ async function postToInbox(message: string): Promise<providers.TransactionRespon
   const onChain = await relayer.getTransactionCount('pending')
   // Trust our count unless the chain has moved past it, or it ran far ahead (dropped sends).
   const nonce = relayerNonce === null || onChain > relayerNonce || relayerNonce - onChain > 25 ? onChain : relayerNonce
-  try {
-    const tx = (await inbox.sendL2Message(message, { nonce })) as providers.TransactionResponse
-    relayerNonce = nonce + 1
-    return tx
-  } catch (e) {
-    relayerNonce = null
-    const m = e instanceof Error ? e.message : String(e)
-    console.error(JSON.stringify({ inboxError: m.slice(0, 300), nonce }))
-    throw new RpcError(-32000, 'the relay could not post this transaction right now; send it again')
+  // HyperEVM's base fee swings (0.1 to 5+ gwei within the hour): offer plenty
+  // of headroom so a send never sits unmined, and if a send with this nonce is
+  // already waiting (a lagging count, or a stuck one), replace it with a
+  // higher fee instead of failing.
+  const block = await parent.getBlock('latest')
+  const base = block.baseFeePerGas ?? (await parent.getGasPrice())
+  let tip = utils.parseUnits('1', 'gwei')
+  let maxFee = base.mul(3).add(tip)
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const tx = (await inbox.sendL2Message(message, { nonce, maxFeePerGas: maxFee, maxPriorityFeePerGas: tip })) as providers.TransactionResponse
+      relayerNonce = nonce + 1
+      return tx
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e)
+      console.error(JSON.stringify({ inboxError: m.slice(0, 200), nonce, attempt, maxFeeGwei: utils.formatUnits(maxFee, 'gwei') }))
+      if (attempt < 3 && /underpriced|replacement fee too low/i.test(m)) {
+        tip = tip.mul(2)
+        maxFee = maxFee.mul(2)
+        continue
+      }
+      relayerNonce = null
+      throw new RpcError(-32000, 'the relay could not post this transaction right now; send it again')
+    }
   }
 }
 
