@@ -30,6 +30,7 @@ type Row = Record<string, unknown>
  *   GET /wallets/:address   holdings and PnL
  *   GET /bridge             Mesa bridge totals and recent transfers
  *   GET /stats
+ *   GET /mesa               $MESA burned, HYPE spent on buybacks, every buyback
  *   GET /stream            server-sent events: pool, trade
  *   GET /health
  */
@@ -307,6 +308,37 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
     return points
   }
 
+  /**
+   * $MESA's flywheel: what has been burned, the HYPE spent buying it back,
+   * and every buyback (each one burns what it buys, in the same transaction).
+   */
+  function mesaBurns() {
+    const g = one(`SELECT token FROM mesa_launches WHERE genesis = 1`)
+    if (!g) return { token: null }
+    const token = g.token as string
+    const supply = (one('SELECT supply FROM tokens WHERE address = ?', token)?.supply as number | null) ?? 1e9
+    const burned = (one(`SELECT COALESCE(SUM(amount), 0) a FROM transfers WHERE token = ? AND dst = ?`, token, DEAD)?.a as number) ?? 0
+    const buybacks = all(
+      `SELECT tx, timestamp, quote_amount hype, token_amount mesa FROM trades WHERE token = ? AND kind = 'buyback' ORDER BY block DESC, log_index DESC LIMIT 1000`,
+      token,
+    )
+    const t = now()
+    const fees = all(
+      `SELECT p.venue, COUNT(DISTINCT p.token) tokens FROM pools p JOIN mesa_launches m ON m.token = p.token GROUP BY p.venue`,
+    )
+    return {
+      token,
+      burned,
+      burnedPct: (burned / supply) * 100,
+      hypeSpent: buybacks.reduce((a, b) => a + (b.hype as number), 0),
+      buybacks: buybacks.length,
+      burned24h: buybacks.filter((b) => (b.timestamp as number) > t - DAY).reduce((a, b) => a + (b.mesa as number), 0),
+      lastAt: (buybacks[0]?.timestamp as number | undefined) ?? null,
+      launches: fees.reduce((a, f) => a + (f.tokens as number), 0),
+      recent: buybacks,
+    }
+  }
+
   function stats() {
     const t = now()
     const d = one('SELECT COALESCE(SUM(value_hype), 0) v, COUNT(*) n FROM trades WHERE timestamp > ?', t - DAY)
@@ -353,6 +385,7 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
       }
       if (parts[0] === 'health' || parts.length === 0) return json({ ok: true, ...stats() })
       if (parts[0] === 'stats') return json(stats())
+      if (parts[0] === 'mesa' && parts.length === 1) return json(mesaBurns())
       if (parts[0] === 'venues') return json(venues())
       if (parts[0] === 'bridge' && parts.length === 1) return json(bridgeStats(db))
       if (parts[0] === 'wallets' && parts[1] && parts.length === 2) {
