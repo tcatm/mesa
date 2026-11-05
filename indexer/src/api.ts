@@ -285,17 +285,19 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
   const lastBefore = db.prepare(
     `SELECT ${PX} p FROM trades WHERE token = ? AND timestamp <= ? AND price_hype IS NOT NULL ORDER BY timestamp DESC, block DESC, log_index DESC LIMIT 1`,
   )
-  function sparkline(token: string): number[] {
+  /** A token younger than a day gets 24 points over its own life instead. */
+  function sparkline(token: string, launchedAt = 0): number[] {
     const c = sparks.get(token)
     if (c && Date.now() - c.at < 60_000) return c.points
     const t = now()
-    const start = t - DAY
+    const start = Math.max(t - DAY, launchedAt - 60)
+    const step = (t - start) / 24
     let p = (lastBefore.get(token, start) as Row | undefined)?.p as number | undefined
     const points: number[] = []
     const rows = sparkRows.all(token, start) as Row[]
     let i = 0
     for (let h = 1; h <= 24; h++) {
-      const end = start + h * HOUR
+      const end = start + h * step
       while (i < rows.length && (rows[i].timestamp as number) <= end) p = rows[i++].p as number
       // Hours before the token's first trade are left out.
       if (p !== undefined) points.push(p)
@@ -397,7 +399,7 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
         const offset = Math.max(0, Number(q.get('offset') ?? 0) || 0)
         const page = rows.slice(offset, offset + num('limit', 50, 200))
         const withSpark = q.get('spark') === '1'
-        return json({ total: rows.length, tokens: withSpark ? page.map((r) => ({ ...r, spark: sparkline(r.address as string) })) : page })
+        return json({ total: rows.length, tokens: withSpark ? page.map((r) => ({ ...r, spark: sparkline(r.address as string, r.launchedAt as number) })) : page })
       }
       if (parts[0] === 'tokens' && parts[1]) {
         const a = parts[1].toLowerCase()
