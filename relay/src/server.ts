@@ -205,6 +205,29 @@ async function allowed(tx: { to?: string; data: string; value: BigNumber }): Pro
   }
 }
 
+/**
+ * The relayer's next HyperEVM nonce, counted here: HyperEVM's "pending"
+ * count can lag a transaction just sent, and reusing its nonce fails as an
+ * underpriced replacement. Resynced from the chain after any send error.
+ */
+let relayerNonce: number | null = null
+async function postToInbox(message: string): Promise<providers.TransactionResponse> {
+  if (!relayer) throw new RpcError(-32603, 'relay has no key')
+  const onChain = await relayer.getTransactionCount('pending')
+  // Trust our count unless the chain has moved past it, or it ran far ahead (dropped sends).
+  const nonce = relayerNonce === null || onChain > relayerNonce || relayerNonce - onChain > 25 ? onChain : relayerNonce
+  try {
+    const tx = (await inbox.sendL2Message(message, { nonce })) as providers.TransactionResponse
+    relayerNonce = nonce + 1
+    return tx
+  } catch (e) {
+    relayerNonce = null
+    const m = e instanceof Error ? e.message : String(e)
+    console.error(JSON.stringify({ inboxError: m.slice(0, 300), nonce }))
+    throw new RpcError(-32000, 'the relay could not post this transaction right now; send it again')
+  }
+}
+
 /** Relayer sends are serialized so its HyperEVM nonces never collide. */
 let queue: Promise<unknown> = Promise.resolve()
 function serial<T>(f: () => Promise<T>): Promise<T> {
@@ -320,7 +343,7 @@ async function sendRaw(raw: string, ip: string): Promise<string> {
     }
   }
 
-  const sent = await serial(async () => (await inbox.sendL2Message(utils.hexConcat([SIGNED_TX, raw]))) as providers.TransactionResponse)
+  const sent = await serial(() => postToInbox(utils.hexConcat([SIGNED_TX, raw])))
   const spend = { at: Date.now(), cost: sent.gasLimit.mul(sent.maxFeePerGas ?? sent.gasPrice ?? 0) }
   spends.push(spend)
   void sent
