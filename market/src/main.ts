@@ -17,10 +17,12 @@
  *   /hyperevm/tokens/:address/bars?resolution=5&from=<unix>&to=<unix>
  *   /hyperevm/tokens/:address/trades?cursor=<opaque>
  *   /img?u=<https url>   a token image, checked and cached (see images.ts)
+ *   POST /upload, GET /media/<file>   images uploaded at launch (see media.ts)
  *   /health
  */
 import { createServer, type ServerResponse } from 'node:http'
 import { image, ImageError, imageHeaders } from './images.js'
+import { media, MediaError, upload } from './media.js'
 
 const KEY = process.env.CODEX_API_KEY
 if (!KEY) throw new Error('CODEX_API_KEY is required')
@@ -313,12 +315,39 @@ function send(res: ServerResponse, status: number, body: unknown, maxAge = 0) {
 
 createServer((req, res) => {
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET' }).end()
+    res
+      .writeHead(204, {
+        'access-control-allow-origin': '*',
+        'access-control-allow-methods': 'GET, POST',
+        'access-control-allow-headers': 'content-type',
+        'access-control-max-age': '86400',
+      })
+      .end()
+    return
+  }
+  const ip = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? ''
+  const url = new URL(req.url ?? '/', 'http://local')
+  if (url.pathname === '/upload') {
+    if (req.method !== 'POST') return send(res, 405, { error: 'POST only' })
+    upload(req, ip).then(
+      (r) => send(res, 200, r),
+      (e: unknown) => send(res, e instanceof MediaError ? e.status : 500, { error: e instanceof MediaError ? e.message : 'upload failed' }),
+    )
     return
   }
   if (req.method !== 'GET') return send(res, 405, { error: 'GET only' })
-  const ip = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? ''
-  const url = new URL(req.url ?? '/', 'http://local')
+  if (url.pathname.startsWith('/media/')) {
+    if (!allowed(ip, imageHits, IMAGES_PER_MINUTE)) return send(res, 429, { error: 'too many requests' })
+    media(url.pathname.slice('/media/'.length)).then(
+      (m) => {
+        if (!m) return send(res, 404, { error: 'not found' }, 60)
+        res.writeHead(200, { ...imageHeaders(m.type, m.body.length), 'cache-control': 'public, max-age=31536000, immutable' })
+        res.end(m.body)
+      },
+      () => send(res, 500, { error: 'unavailable' }),
+    )
+    return
+  }
   if (url.pathname === '/img') {
     if (!allowed(ip, imageHits, IMAGES_PER_MINUTE)) return send(res, 429, { error: 'too many requests' })
     image(url.searchParams.get('u') ?? '').then(

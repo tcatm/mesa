@@ -111,6 +111,10 @@ services:
     environment:
       CODEX_API_KEY: ${CODEX_API_KEY}
       PORT: "8085"
+      MEDIA_DIR: /media
+    volumes:
+      # Images uploaded at launch: permanent, addressed by their hash.
+      - /opt/mesa/data/media:/media
 
   caddy:
     image: caddy:2.8.4

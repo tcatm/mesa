@@ -25,6 +25,16 @@ api.mesa.cx {
 	handle /img {
 		reverse_proxy 127.0.0.1:8085
 	}
+	# Images uploaded on the launch page, and where they are served from.
+	handle /upload {
+		request_body {
+			max_size 4MB
+		}
+		reverse_proxy 127.0.0.1:8085
+	}
+	handle /media/* {
+		reverse_proxy 127.0.0.1:8085
+	}
 	# The Elysium mainnet terminal (every launchpad), from our own node.
 	handle_path /elysium/* {
 		reverse_proxy 127.0.0.1:8081 {
