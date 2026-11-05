@@ -229,25 +229,7 @@ export function tableBuilder(db: DatabaseSync, n: Network) {
         bundlePct: supply ? ((S.bundles.get(a) ?? 0) / supply) * 100 : null,
       })
     }
-    // Tickers used by more than one token: the first launch of a ticker is
-    // its OG, the rest are duplicates.
     const genesis = (one(`SELECT token FROM mesa_launches WHERE genesis = 1`)?.token as string | undefined) ?? null
-    const byTicker = new Map<string, Row[]>()
-    for (const r of rows) {
-      const k = String(r.symbol ?? '').trim().toLowerCase()
-      if (!k) continue
-      byTicker.set(k, [...(byTicker.get(k) ?? []), r])
-    }
-    for (const [k, list] of byTicker) {
-      if (list.length > 1) {
-        list.sort((a, b) => (a.launchedAt as number) - (b.launchedAt as number))
-        list.forEach((r, i) => {
-          r.og = i === 0
-          r.sameTicker = list.length - 1
-          r.ogAddress = list[0]!.address
-        })
-      }
-    }
     // Exact copies of $MESA (name "Mesa" and ticker "MESA") are hidden.
     // Anything else goes: MesaCat, MesaDoge, "Mesa" with another ticker.
     if (genesis) {
@@ -255,6 +237,32 @@ export function tableBuilder(db: DatabaseSync, n: Network) {
         const exact = String(r.name ?? '').trim().toLowerCase() === 'mesa' && String(r.symbol ?? '').trim().toLowerCase() === 'mesa'
         if (exact && r.address !== genesis) r.spam = true
       }
+    }
+    // Tickers shared by more than one visible token. Launch time alone picks
+    // the wrong one (a copy is often launched first, or the real token's pool
+    // came late), so the original is the one holders chose: most holders,
+    // earliest launch on a tie, and $MESA is always its own original. Hidden
+    // tokens don't count.
+    const byTicker = new Map<string, Row[]>()
+    for (const r of rows) {
+      if (r.spam) continue
+      const k = String(r.symbol ?? '').trim().toLowerCase()
+      if (!k) continue
+      byTicker.set(k, [...(byTicker.get(k) ?? []), r])
+    }
+    for (const list of byTicker.values()) {
+      if (list.length < 2) continue
+      list.sort(
+        (a, b) =>
+          Number(b.address === genesis) - Number(a.address === genesis) ||
+          (b.holders as number) - (a.holders as number) ||
+          (a.launchedAt as number) - (b.launchedAt as number),
+      )
+      list.forEach((r, i) => {
+        r.og = i === 0
+        r.sameTicker = list.length - 1
+        r.ogAddress = list[0]!.address
+      })
     }
     return rows
   }
