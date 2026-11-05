@@ -4,9 +4,9 @@
 
 # Mesa
 
-**Every launch starts on level ground.**
+**The launchpad for builders on Elysium.**
 
-A launchpad, terminal and bridge on [Elysium](https://elysium.kinetiq.xyz), the Hyperliquid L2.
+Launch the token for what you're building, earn HYPE from its trading for life, and let holders verify everything on chain. With a terminal and bridge for [Elysium](https://elysium.kinetiq.xyz), the Hyperliquid L2.
 
 [![ci](https://github.com/tcatm/mesa/actions/workflows/ci.yml/badge.svg)](https://github.com/tcatm/mesa/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-B6FFEE?labelColor=1B1B1B)](LICENSE)
@@ -23,7 +23,7 @@ A launchpad, terminal and bridge on [Elysium](https://elysium.kinetiq.xyz), the 
 
 | | |
 |---|---|
-| **Launchpad** | Launch a token in one transaction. 1B supply, all of it in a Uniswap v4 pool, liquidity locked forever. |
+| **Launchpad** | Launch your project's token in one transaction. 1B supply, all of it in a Uniswap v4 pool, liquidity locked forever, revenue in HYPE for life. |
 | **Terminal** | Every token on every Elysium launchpad, indexed from our own node: live charts, forensics, one-click trading. |
 | **Bridge** | HYPE between HyperEVM and Elysium through Elysium's official bridge, 1:1, no fee on top. |
 | **RPC** | [`https://rpc.mesa.cx`](https://status.mesa.cx), chain ID `99901`, served from Mesa's own Elysium node. |
@@ -39,6 +39,13 @@ runs every 10 minutes in small chunks, and you can watch it live at [status.mesa
 ```
 someone launches on Mesa  →  every trade pays a fee in HYPE  →  30% buys $MESA  →  🔥 burned forever
 ```
+
+## For builders
+
+- **Revenue in HYPE, for life.** 70% of a 1% to 10% trading fee goes to your side on every trade, in HYPE, never in your token.
+- **Pay the team, reward holders.** Split your side across up to five wallets, holders of 0.1%+, or buybacks of your own token.
+- **Builder fees.** Apps that launch tokens through Mesa can take up to 1% on top of every trade, for life: `mesa.cx/launch?builder=0x…&builderFee=0.5`.
+- **Coming next:** a builder dashboard and SDK, verified builder profiles, and shielded HYPE.
 
 ## How a launch works
 
