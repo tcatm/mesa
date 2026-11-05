@@ -107,7 +107,19 @@ interface Relayed {
 /** Relayed transactions not yet seen executed upstream, by hash. */
 const pending = new Map<string, Relayed>()
 /** Highest relayed nonce + 1, per sender. */
-const nextNonce = new Map<string, number>()
+/**
+ * The next nonce for `from`: Elysium's confirmed count, then every nonce the
+ * relay has posted and is still waiting on, in an unbroken run. A relayed
+ * transaction Elysium dropped (it never executes) leaves the run after
+ * DROPPED_AFTER, so one bad transaction can't wedge a wallet.
+ */
+function nextFor(from: string, confirmed: number): number {
+  const waiting = new Set([...pending.values()].filter((r) => r.from === from).map((r) => r.nonce))
+  let n = confirmed
+  while (waiting.has(n)) n += 1
+  return n
+}
+const DROPPED_AFTER = Number(env.DROPPED_AFTER_SECONDS ?? 600) * 1000
 
 const windows = new Map<string, number[]>()
 function limited(key: string, perMin: number): boolean {
@@ -206,7 +218,8 @@ async function prune() {
     try {
       const receipt = await upstream.getTransactionReceipt(hash)
       const count = await upstream.getTransactionCount(r.from, 'latest')
-      if (receipt || count > r.nonce || Date.now() - r.at > 6 * 3600_000) pending.delete(hash)
+      // Done, replaced by another transaction with its nonce, or dropped.
+      if (receipt || count > r.nonce || Date.now() - r.at > DROPPED_AFTER) pending.delete(hash)
     } catch {
       // Upstream unavailable: keep it for now.
     }
@@ -266,12 +279,14 @@ async function sendRaw(raw: string, ip: string): Promise<string> {
   }
 
   // Reject what Elysium would reject, so no inbox gas is spent on it.
-  const [chainNonce, balance] = await Promise.all([
-    upstream.getTransactionCount(tx.from, 'pending'),
-    upstream.getBalance(tx.from, 'pending'),
+  const [confirmed, balance] = await Promise.all([
+    upstream.getTransactionCount(tx.from, 'latest'),
+    upstream.getBalance(tx.from, 'latest'),
   ])
-  const expected = Math.max(chainNonce, nextNonce.get(from) ?? 0)
-  if (tx.nonce !== expected) reject('nonce', -32000, `nonce ${tx.nonce} is not the next one (${expected})`)
+  const expected = nextFor(from, confirmed)
+  // The next nonce, or a replacement (cancel, speed up) of one still waiting.
+  const replaces = [...pending.values()].find((r) => r.from === from && r.nonce === tx.nonce)
+  if (tx.nonce !== expected && !replaces) reject('nonce', -32000, `nonce ${tx.nonce} is not the next one (${expected})`)
   const price = tx.maxFeePerGas ?? tx.gasPrice ?? BigNumber.from(0)
   if (balance.lt(tx.gasLimit.mul(price).add(tx.value))) reject('funds', -32000, 'insufficient funds for gas * price + value')
 
@@ -299,8 +314,8 @@ async function sendRaw(raw: string, ip: string): Promise<string> {
     .catch(() => undefined)
   stats.relayed += 1
   stats.lastRelayAt = new Date().toISOString()
+  if (replaces) pending.delete(replaces.hash)
   pending.set(tx.hash, { hash: tx.hash, from, nonce: tx.nonce, raw, parentTx: sent.hash, at: Date.now(), tx })
-  nextNonce.set(from, tx.nonce + 1)
   console.log(JSON.stringify({ relayed: tx.hash, from, nonce: tx.nonce, to: tx.to, parentTx: sent.hash }))
   return tx.hash
 }
@@ -355,9 +370,9 @@ async function handle(req: RpcReq, ip: string): Promise<unknown> {
     case 'eth_sendRawTransaction':
       return sendRaw(String(p[0]), ip)
     case 'eth_getTransactionCount': {
-      const count = BigNumber.from(await forward(req)).toNumber()
-      if (p[1] !== 'pending') return utils.hexValue(count)
-      return utils.hexValue(Math.max(count, nextNonce.get(String(p[0]).toLowerCase()) ?? 0))
+      if (p[1] !== 'pending') return forward(req)
+      const count = BigNumber.from(await forward({ ...req, params: [p[0], 'latest'] })).toNumber()
+      return utils.hexValue(nextFor(String(p[0]).toLowerCase(), count))
     }
     case 'eth_getTransactionByHash': {
       const result = await forward(req)
