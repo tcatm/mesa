@@ -1,0 +1,45 @@
+{
+  "name": "mesa-agent",
+  "version": "0.1.0",
+  "description": "Mesa for AI agents: read Elysium's markets, trade, launch tokens and claim fees, from an MCP server, a CLI or a TypeScript SDK.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://mesa.cx/docs#agents",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tcatm/mesa",
+    "directory": "agent"
+  },
+  "bin": {
+    "mesa": "dist/cli.js",
+    "mesa-mcp": "dist/mcp.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "viem": "^2.57.16",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.8.3"
+  }
+}

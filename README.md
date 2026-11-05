@@ -90,6 +90,7 @@ Every address, role and the bridge contracts: [docs/deployments.md](docs/deploym
 | Path | What it is |
 |---|---|
 | [`contracts/`](contracts/) | Solidity (Foundry): `MesaHook`, `MesaToken`, `MesaTokenFactory`, `MesaRewardToken`, `MesaPayout`, `BuybackBurner`, `QuoteRegistry`, bridge contracts; deploy scripts and tests |
+| [`agent/`](agent/) | Mesa for AI agents: an MCP server, the `mesa` CLI and a TypeScript SDK |
 | [`relay/`](relay/) | `rpc.mesa.cx`: wallet RPC that relays signed transactions through Elysium's inbox until its public sequencer opens; also the $MESA buyback keeper |
 | [`indexer/`](indexer/) | `api.mesa.cx/elysium`: indexes every Uniswap v4 PoolManager on Elysium for the terminal |
 | [`market/`](market/) | `api.mesa.cx`: HyperEVM market data, the image proxy and launch image uploads |
