@@ -7,6 +7,10 @@ import { live } from './indexer.js'
 import { bridgeStats } from './bridgeTracker.js'
 
 const DAY = 86_400
+const HOUR = 3_600
+/** The windows the terminal can show change and volume over. */
+const WINDOWS = { '1h': HOUR, '6h': 6 * HOUR, '24h': DAY, '7d': 7 * DAY } as const
+type Window = keyof typeof WINDOWS
 type Row = Record<string, unknown>
 
 /**
@@ -22,7 +26,7 @@ const PX = `(CASE WHEN token_amount > 0 AND value_hype > 0 AND (price_hype IS NU
  * PoolManagers. Prices and market caps are in HYPE, and in USD when HYPE's
  * dollar price is known from an on-chain HYPE/USDC pool.
  *
- *   GET /tokens?venue=&sort=new|trending|volume|mcap&q=&limit=&offset=
+ *   GET /tokens?venue=&sort=trending|volume|gainers|losers|mcap|new|trades&window=1h|6h|24h|7d&q=&spark=1&all=1&limit=&offset=
  *   GET /tokens/:address
  *   GET /tokens/:address/trades?limit=&before=<unix seconds>
  *   GET /tokens/:address/candles?interval=<seconds>&limit=
@@ -45,6 +49,8 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
     ...(db.prepare('SELECT DISTINCT hook FROM pools').all() as { hook: string }[]).map((h) => h.hook),
   ])
   const now = () => Math.floor(Date.now() / 1000)
+  /** A launchpad's name from its hook; hooks nobody has named yet are "Other". */
+  const venueOf = (hook: string) => n.venues[hook] ?? (hook === ZERO ? 'Uniswap v4' : 'Other')
   const all = (sql: string, ...p: (string | number)[]) => db.prepare(sql).all(...p) as Row[]
   const one = (sql: string, ...p: (string | number)[]) => db.prepare(sql).get(...p) as Row | undefined
   const placeholders = (k: number) => Array(k).fill('?').join(',')
@@ -73,11 +79,9 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
         `SELECT token, price_hype FROM (SELECT token, ${PX} price_hype, ROW_NUMBER() OVER (PARTITION BY token ORDER BY block DESC, log_index DESC) rn FROM trades WHERE price_hype IS NOT NULL) WHERE rn = 1`,
       ).map((r) => [r.token, r.price_hype as number]),
     )
-    const dayAgo = new Map(
-      all(
-        `SELECT token, price_hype FROM (SELECT token, ${PX} price_hype, ROW_NUMBER() OVER (PARTITION BY token ORDER BY block DESC, log_index DESC) rn FROM trades WHERE price_hype IS NOT NULL AND timestamp <= ?) WHERE rn = 1`,
-        t - DAY,
-      ).map((r) => [r.token, r.price_hype as number]),
+    // Each token's price at the start of each window: its last trade before then.
+    const priceAt = db.prepare(
+      `SELECT ${PX} price_hype FROM trades WHERE token = ? AND timestamp <= ? AND price_hype IS NOT NULL ORDER BY timestamp DESC, block DESC, log_index DESC LIMIT 1`,
     )
     const firstHype = new Map(
       all(
@@ -85,10 +89,23 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
       ).map((r) => [r.token, r.price_hype as number]),
     )
     const vol = new Map(
-      all('SELECT token, SUM(value_hype) v, COUNT(*) n, MAX(timestamp) last FROM trades WHERE timestamp > ? GROUP BY token', t - DAY).map((r) => [
-        r.token,
-        r,
-      ]),
+      all(
+        `SELECT token,
+           SUM(CASE WHEN timestamp > ? THEN value_hype ELSE 0 END) v1h,
+           SUM(CASE WHEN timestamp > ? THEN value_hype ELSE 0 END) v6h,
+           SUM(CASE WHEN timestamp > ? THEN value_hype ELSE 0 END) v,
+           SUM(value_hype) v7d,
+           SUM(CASE WHEN timestamp > ? THEN 1 ELSE 0 END) n,
+           COUNT(DISTINCT CASE WHEN timestamp > ? THEN trader END) traders,
+           MAX(timestamp) last
+         FROM trades WHERE timestamp > ? GROUP BY token`,
+        t - HOUR,
+        t - 6 * HOUR,
+        t - DAY,
+        t - DAY,
+        t - DAY,
+        t - 7 * DAY,
+      ).map((r) => [r.token, r]),
     )
     const holders = new Map(
       all(
@@ -113,21 +130,34 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
     )
     const usdRate = hypeUsd()
     const rows: Row[] = []
+    const seen = new Set<string>()
     for (const p of pools) {
       const a = p.token as string
-      if (notListed.has(a)) continue
+      // A token whose first two pools share a block is listed once.
+      if (notListed.has(a) || seen.has(a)) continue
+      seen.add(a)
       const tk = tokens.get(a)
       const supply = (tk?.supply as number | null) ?? null
       const price = lastHype.get(a) ?? (hype.has(p.quote as string) ? (p.initial_price as number) : null)
-      const before = dayAgo.get(a) ?? firstHype.get(a) ?? price
       const v = vol.get(a)
+      const first = firstHype.get(a) ?? price
+      const change = (w: number) => {
+        if (!price) return 0
+        const launched = (p.timestamp as number) > t - w
+        const b = launched ? first : ((priceAt.get(a, t - w) as Row | undefined)?.price_hype as number | undefined) ?? first
+        return b ? (price / b - 1) * 100 : 0
+      }
+      const trades24h = (v?.n as number) ?? 0
+      const traders24h = (v?.traders as number) ?? 0
+      const holderCount = holders.get(a) ?? 0
       const mcap = price !== null && supply !== null ? price * supply : null
       rows.push({
         address: a,
         image: (images.get(a) as string | undefined) ?? null,
         name: tk?.name ?? null,
         symbol: tk?.symbol ?? null,
-        venue: p.venue,
+        venue: venueOf(p.hook as string),
+        hook: p.hook,
         quote: p.quote,
         quoteSymbol: hype.has(p.quote as string) ? 'HYPE' : ((tokens.get(p.quote)?.symbol as string) ?? null),
         creator: p.creator,
@@ -136,11 +166,20 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
         priceUsd: price !== null && usdRate ? price * usdRate : null,
         marketCapHype: mcap,
         marketCapUsd: mcap !== null && usdRate ? mcap * usdRate : null,
-        change24h: price && before ? (price / before - 1) * 100 : 0,
+        change1h: change(HOUR),
+        change6h: change(6 * HOUR),
+        change24h: change(DAY),
+        change7d: change(7 * DAY),
+        volume1hHype: (v?.v1h as number) ?? 0,
+        volume6hHype: (v?.v6h as number) ?? 0,
         volume24hHype: (v?.v as number) ?? 0,
-        trades24h: (v?.n as number) ?? 0,
+        volume7dHype: (v?.v7d as number) ?? 0,
+        trades24h,
+        traders24h,
         lastTradeAt: (v?.last as number) ?? null,
-        holders: holders.get(a) ?? 0,
+        holders: holderCount,
+        // Wash trading: lots of trades between a handful of wallets.
+        spam: (trades24h >= 100 && traders24h <= 5) || (holderCount < 3 && trades24h < 3),
         supply,
         devPct: supply ? ((creatorBal.get(a) ?? 0) / supply) * 100 : null,
         bundlePct: supply ? ((bundles.get(a) ?? 0) / supply) * 100 : null,
@@ -316,17 +355,48 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
     }
   }
 
+  /** Launchpads by name, with how many tokens each has listed and their volume. */
   function venues() {
+    const by = new Map<string, { venue: string; tokens: number; volume24hHype: number; trades24h: number; since: number }>()
+    for (const r of table()) {
+      if (r.spam) continue
+      const k = r.venue as string
+      const v = by.get(k) ?? { venue: k, tokens: 0, volume24hHype: 0, trades24h: 0, since: Infinity }
+      v.tokens += 1
+      v.volume24hHype += r.volume24hHype as number
+      v.trades24h += r.trades24h as number
+      v.since = Math.min(v.since, r.launchedAt as number)
+      by.set(k, v)
+    }
+    return [...by.values()].sort((a, b) => b.tokens - a.tokens)
+  }
+
+  /** Hourly closing prices over the last day, for a token row's sparkline. */
+  const sparks = new Map<string, { at: number; points: number[] }>()
+  const sparkRows = db.prepare(
+    `SELECT timestamp, ${PX} p FROM trades WHERE token = ? AND timestamp > ? AND price_hype IS NOT NULL ORDER BY block, log_index`,
+  )
+  const lastBefore = db.prepare(
+    `SELECT ${PX} p FROM trades WHERE token = ? AND timestamp <= ? AND price_hype IS NOT NULL ORDER BY timestamp DESC, block DESC, log_index DESC LIMIT 1`,
+  )
+  function sparkline(token: string): number[] {
+    const c = sparks.get(token)
+    if (c && Date.now() - c.at < 60_000) return c.points
     const t = now()
-    const day = new Map(
-      all(
-        `SELECT p.venue, COALESCE(SUM(tr.value_hype), 0) v, COUNT(tr.tx) n FROM trades tr JOIN pools p ON p.id = tr.pool WHERE tr.timestamp > ? GROUP BY p.venue`,
-        t - DAY,
-      ).map((r) => [r.venue, r]),
-    )
-    return all(`SELECT venue, COUNT(*) pools, COUNT(DISTINCT token) tokens, MIN(timestamp) since FROM pools GROUP BY venue`)
-      .map((r) => ({ ...r, volume24hHype: day.get(r.venue)?.v ?? 0, trades24h: day.get(r.venue)?.n ?? 0 }))
-      .sort((a, b) => (b.trades24h as number) - (a.trades24h as number))
+    const start = t - DAY
+    let p = (lastBefore.get(token, start) as Row | undefined)?.p as number | undefined
+    const points: number[] = []
+    const rows = sparkRows.all(token, start) as Row[]
+    let i = 0
+    for (let h = 1; h <= 24; h++) {
+      const end = start + h * HOUR
+      while (i < rows.length && (rows[i].timestamp as number) <= end) p = rows[i++].p as number
+      // Hours before the token's first trade are left out.
+      if (p !== undefined) points.push(p)
+    }
+    sparks.set(token, { at: Date.now(), points })
+    if (sparks.size > 5_000) sparks.clear()
+    return points
   }
 
   function stats() {
@@ -335,7 +405,8 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
     const mesa = one(`SELECT token FROM mesa_launches WHERE genesis = 1`)
     const burned = mesa ? one(`SELECT COALESCE(SUM(amount), 0) a FROM transfers WHERE token = ? AND dst = ?`, mesa.token as string, DEAD) : undefined
     return {
-      tokens: table().length,
+      tokens: table().filter((r) => !r.spam).length,
+      launchpads: new Set(table().map((r) => r.venue)).size,
       pools: one('SELECT COUNT(*) n FROM pools')?.n,
       volume24hHype: d?.v,
       trades24h: d?.n,
@@ -384,7 +455,11 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
       if (parts[0] === 'tokens' && parts.length === 1) {
         const search = (q.get('q') ?? '').toLowerCase().trim()
         const venue = q.get('venue')
+        const w = (q.get('window') ?? '24h') as Window
+        const win = w in WINDOWS ? w : '24h'
         let rows = table()
+        // Wash-traded and empty tokens are hidden unless asked for, or searched for by address.
+        if (q.get('all') !== '1' && !/^0x[0-9a-f]{40}$/.test(search)) rows = rows.filter((r) => !r.spam)
         if (venue) rows = rows.filter((r) => r.venue === venue)
         if (search) {
           rows = rows.filter(
@@ -395,10 +470,28 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
           )
         }
         const sort = q.get('sort') ?? 'trending'
-        const key = { new: 'launchedAt', volume: 'volume24hHype', mcap: 'marketCapHype', trending: 'trades24h' }[sort] ?? 'trades24h'
-        rows = [...rows].sort((a, b) => ((b[key] as number) ?? -1) - ((a[key] as number) ?? -1))
+        const vol = `volume${win}Hype`
+        const chg = `change${win}`
+        const value: (r: Row) => number =
+          sort === 'new'
+            ? (r) => r.launchedAt as number
+            : sort === 'volume'
+              ? (r) => r[vol] as number
+              : sort === 'mcap'
+                ? (r) => (r.marketCapHype as number) ?? -1
+                : sort === 'gainers'
+                  ? (r) => ((r[vol] as number) > 0 ? (r[chg] as number) : -Infinity)
+                  : sort === 'losers'
+                    ? (r) => ((r[vol] as number) > 0 ? -(r[chg] as number) : -Infinity)
+                    : sort === 'trades'
+                      ? (r) => r.trades24h as number
+                      : // Trending: real activity, many wallets trading real size, not trade count alone.
+                        (r) => ((r.traders24h as number) + 1) * Math.log10(1 + (r[vol] as number))
+        rows = [...rows].sort((a, b) => value(b) - value(a))
         const offset = Math.max(0, Number(q.get('offset') ?? 0) || 0)
-        return json({ total: rows.length, tokens: rows.slice(offset, offset + num('limit', 50, 200)) })
+        const page = rows.slice(offset, offset + num('limit', 50, 200))
+        const withSpark = q.get('spark') === '1'
+        return json({ total: rows.length, tokens: withSpark ? page.map((r) => ({ ...r, spark: sparkline(r.address as string) })) : page })
       }
       if (parts[0] === 'tokens' && parts[1]) {
         const a = parts[1].toLowerCase()

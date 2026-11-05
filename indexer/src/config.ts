@@ -35,7 +35,8 @@ export const networks: Record<string, Network> = {
     ],
     venues: {
       '0x00c002cdae688f39a90cf2ad74c59421c9502acc': 'BOXA',
-      '0x3ab88ddc3cf2a012af88b60828edb4553697e5dc': 'Flaunch',
+      '0x3ab88ddc3cf2a012af88b60828edb4553697e5dc': 'Volta',
+      '0xe0def4221b9840a610d4e7d55812a79a6431a8ec': 'Ascend',
       '0xe11cafa5901b0aab51eb78251488400f9e4320cc': 'ElysPump',
       '0xbacf71bf02b8cfe171853c5ec4a060ba2ac1e0cc': 'ElysPump',
     },
