@@ -146,8 +146,26 @@ export class BridgeTracker {
     }
   }
 
+  /** Deposits recorded before message indexes were kept: read them from their receipts. */
+  private async backfillMessages() {
+    const rows = this.db
+      .prepare(`SELECT tx, log_index FROM bridge_transfers WHERE kind = 'deposit' AND position IS NULL LIMIT 40`)
+      .all() as { tx: string; log_index: number }[]
+    if (!rows.length) return
+    const receipts = (await this.rpc(
+      this.cfg.parentRpc,
+      rows.map((r) => ({ method: 'eth_getTransactionReceipt', params: [r.tx] })),
+    )) as ({ logs: Log[] } | null)[]
+    const set = this.db.prepare(`UPDATE bridge_transfers SET position = ? WHERE kind = 'deposit' AND tx = ? AND log_index = ?`)
+    rows.forEach((r, i) => {
+      const l = receipts[i]?.logs.find((x) => parseInt(x.logIndex, 16) === r.log_index && x.topics[0] === TOPIC.messageDelivered)
+      if (l?.topics[1]) set.run(Number(BigInt(l.topics[1])), r.tx, r.log_index)
+    })
+  }
+
   /** HyperEVM: MesaBridge deposits and claims of MesaWithdraw withdrawals. */
   private async parentStep(range: number): Promise<boolean> {
+    await this.backfillMessages().catch(() => {})
     const url = this.cfg.parentRpc
     const head = await this.head(url)
     const from = Number(getMeta(this.db, 'bridge_parent_cursor') ?? this.cfg.parentStart)
@@ -183,6 +201,9 @@ export class BridgeTracker {
           timestamp: t.get(parseInt(l.blockNumber, 16)) ?? 0,
           address: addrOf(word(body, 0)),
           amount: wei(word(body, 1)),
+          // For deposits, position holds the delayed-message index: the
+          // requestId of the Elysium transactions that carry it out.
+          position: Number(BigInt(l.topics[1] ?? '0x0')),
         })
       })
       for (const l of claims) {
@@ -300,4 +321,27 @@ export function bridgeStats(db: DatabaseSync) {
       )
       .all(),
   }
+}
+
+/** A deposit by its delayed-message index, or a withdrawal and its claim by Elysium tx. */
+export function bridgeLookup(db: DatabaseSync, q: { message?: number; tx?: string }) {
+  migrate(db)
+  if (q.message !== undefined) {
+    return (
+      (db
+        .prepare(`SELECT kind, tx, timestamp, address, amount FROM bridge_transfers WHERE kind = 'deposit' AND position = ?`)
+        .get(q.message) as Record<string, unknown> | undefined) ?? null
+    )
+  }
+  if (q.tx) {
+    const w = db
+      .prepare(`SELECT kind, tx, timestamp, address, amount, position FROM bridge_transfers WHERE kind = 'withdrawal' AND tx = ?`)
+      .get(q.tx) as Record<string, unknown> | undefined
+    if (!w) return null
+    const claim = db
+      .prepare(`SELECT tx, timestamp FROM bridge_transfers WHERE kind = 'claim' AND position = ?`)
+      .get(w.position as number) as Record<string, unknown> | undefined
+    return { ...w, claim: claim ?? null }
+  }
+  return null
 }

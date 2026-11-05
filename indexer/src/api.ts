@@ -5,7 +5,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { BUNDLE_BLOCKS, DEAD, ZERO, type Network } from './config.js'
 import { getMeta } from './db.js'
 import { live } from './indexer.js'
-import { bridgeStats } from './bridgeTracker.js'
+import { bridgeLookup, bridgeStats } from './bridgeTracker.js'
 import { PX, tableBuilder } from './table.js'
 
 const DAY = 86_400
@@ -412,6 +412,13 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
       if (parts[0] === 'mesa' && parts.length === 1) return json(mesaBurns())
       if (parts[0] === 'venues') return json(venues())
       if (parts[0] === 'bridge' && parts.length === 1) return json(bridgeStats(db))
+      if (parts[0] === 'bridge' && parts[1] === 'lookup') {
+        const m = q.get('message')
+        const tx = (q.get('tx') ?? '').toLowerCase()
+        if (m !== null && /^\d+$/.test(m)) return json(bridgeLookup(db, { message: Number(m) }))
+        if (/^0x[0-9a-f]{64}$/.test(tx)) return json(bridgeLookup(db, { tx }))
+        return json({ error: 'give message or tx' }, 400)
+      }
       if (parts[0] === 'tx' && parts[1] && parts.length === 2) {
         const h = parts[1].toLowerCase()
         if (!/^0x[0-9a-f]{64}$/.test(h)) return json({ error: 'bad hash' }, 400)
