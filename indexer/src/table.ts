@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 
-import { BUNDLE_BLOCKS, DEAD, ZERO, type Network } from './config.js'
+import { BUNDLE_BLOCKS, DEAD, IMAGE_OVERRIDES, ZERO, type Network } from './config.js'
 
 const DAY = 86_400
 const HOUR = 3_600
@@ -110,7 +110,10 @@ export function tableBuilder(db: DatabaseSync, n: Network) {
       at: Date.now(),
       pools,
       tokens: new Map(all('SELECT * FROM tokens').map((r) => [r.address, r])),
-      images: new Map(all('SELECT token, image FROM token_meta WHERE image IS NOT NULL').map((r) => [r.token, r.image])),
+      images: new Map([
+        ...all('SELECT token, image FROM token_meta WHERE image IS NOT NULL').map((r) => [r.token, r.image] as [unknown, unknown]),
+        ...Object.entries(IMAGE_OVERRIDES),
+      ]),
       first,
       last,
       at6h,
