@@ -69,6 +69,14 @@ export class Indexer {
     private n: Network,
   ) {
     this.hype = new Set(n.hype.map(lc))
+    const all = n.poolManagers.map((p) => lc(p.address))
+    const stored = getMeta(db, 'managers')
+    // A new database indexes every manager from the start; an existing one
+    // has indexed all but those marked for backfill.
+    this.live = new Set(
+      stored ? (JSON.parse(stored) as string[]) : getMeta(db, 'cursor') ? n.poolManagers.filter((p) => !p.backfill).map((p) => lc(p.address)) : all,
+    )
+    setMeta(db, 'managers', JSON.stringify([...this.live]))
     for (const p of db.prepare('SELECT id, token, quote, quote_is0, venue, hook FROM pools').all() as unknown as Pool[]) {
       this.pools.set(p.id, p)
       this.seen.add(p.token)
@@ -87,6 +95,12 @@ export class Indexer {
     }
   }
 
+  /** PoolManagers the live loop reads; others are still being backfilled. */
+  private live: Set<string>
+  /** Set by the backfill when it has caught up: the live loop pauses so it can finish. */
+  private switching = false
+  private stepping = false
+
   get cursor(): number {
     return Number(getMeta(this.db, 'cursor') ?? this.n.startBlock)
   }
@@ -98,10 +112,15 @@ export class Indexer {
    * quiet one grows back.
    */
   async run(signal?: AbortSignal) {
+    void this.backfill(signal)
     // Start small after a restart: the cursor may sit in a busy stretch.
     let range = Math.min(this.n.range, 1_000)
     while (!signal?.aborted) {
       try {
+        if (this.switching) {
+          await sleep(200)
+          continue
+        }
         const head = await this.rpc.getBlockNumber()
         const from = this.cursor
         if (from > head) {
@@ -109,7 +128,8 @@ export class Indexer {
           continue
         }
         const to = Math.min(head, from + range - 1)
-        const events = await this.step(from, to)
+        this.stepping = true
+        const events = await this.step(from, to, [...this.live]).finally(() => (this.stepping = false))
         setMeta(this.db, 'cursor', String(to + 1))
         setMeta(this.db, 'head', String(head))
         // Size the next range by how busy this one was: aim for at most
@@ -125,6 +145,44 @@ export class Indexer {
         console.error(
           JSON.stringify({ indexerError: e instanceof Error ? e.message.slice(0, 300) : String(e), range }),
         )
+        await sleep(2_000)
+      }
+    }
+  }
+
+  /**
+   * Index the history of PoolManagers added after this database began, from
+   * the start of the chain up to the live cursor, beside the live loop. When
+   * it catches up, the live loop pauses for one last range and then reads
+   * those managers too. Progress is saved, so a restart resumes it.
+   */
+  private async backfill(signal?: AbortSignal) {
+    const missing = this.n.poolManagers.map((p) => lc(p.address)).filter((a) => !this.live.has(a))
+    if (!missing.length) return
+    let range = Math.min(this.n.range, 10_000)
+    while (!signal?.aborted) {
+      try {
+        const from = Number(getMeta(this.db, 'backfill') ?? this.n.startBlock)
+        const end = this.cursor
+        if (from >= end) {
+          if (!this.switching) {
+            this.switching = true
+            while (this.stepping) await sleep(100)
+            continue // one more pass up to the cursor the live loop left
+          }
+          for (const a of missing) this.live.add(a)
+          setMeta(this.db, 'managers', JSON.stringify([...this.live]))
+          this.switching = false
+          console.log(JSON.stringify({ backfilled: missing.length, to: end - 1 }))
+          return
+        }
+        const to = Math.min(end - 1, from + range - 1)
+        const events = await this.step(from, to, missing, true)
+        setMeta(this.db, 'backfill', String(to + 1))
+        range = events > 5_000 ? Math.max(50, Math.floor((range * 5_000) / events)) : Math.min(10_000, Math.ceil(range * 1.5))
+      } catch (e) {
+        range = Math.max(50, Math.floor(range / 2))
+        console.error(JSON.stringify({ backfillError: e instanceof Error ? e.message.slice(0, 300) : String(e), range }))
         await sleep(2_000)
       }
     }
@@ -223,10 +281,10 @@ export class Indexer {
   // ---------------------------------------------------------------- a range
 
   /** Index one block range; returns how many PoolManager events it held. */
-  async step(fromBlock: number, toBlock: number): Promise<number> {
-    const pms = this.n.poolManagers.map((p) => p.address)
+  async step(fromBlock: number, toBlock: number, pms: string[], history = false): Promise<number> {
     const pmLogs = await this.logs(fromBlock, toBlock, pms, [[T.init, T.swap]])
-    const mesaLogs = this.n.mesa ? await this.logs(fromBlock, toBlock, [this.n.mesa.hook, this.n.mesa.burner]) : []
+    // Mesa's own events are the live loop's: its hook is on a manager indexed from the start.
+    const mesaLogs = this.n.mesa && !history ? await this.logs(fromBlock, toBlock, [this.n.mesa.hook, this.n.mesa.burner]) : []
 
     // 1. New pools, in order, deciding which side is the token.
     const newPools: Record<string, unknown>[] = []
@@ -443,8 +501,10 @@ export class Indexer {
       this.db.exec('ROLLBACK')
       throw e
     }
-    for (const p of newPools) live.emit('pool', p)
-    for (const t of trades) live.emit('trade', t)
+    if (!history) {
+      for (const p of newPools) live.emit('pool', p)
+      for (const t of trades) live.emit('trade', t)
+    }
     if (newPools.length || trades.length) {
       console.log(JSON.stringify({ indexed: [fromBlock, toBlock], pools: newPools.length, trades: trades.length, transfers: transfers.length }))
     }

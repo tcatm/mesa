@@ -50,7 +50,10 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
   ])
   const now = () => Math.floor(Date.now() / 1000)
   /** A launchpad's name from its hook; hooks nobody has named yet are "Other". */
-  const venueOf = (hook: string) => n.venues[hook] ?? (hook === ZERO ? 'Uniswap v4' : 'Other')
+  const managerVenue = new Map(n.poolManagers.filter((p) => p.venue).map((p) => [p.address.toLowerCase(), p.venue!]))
+  const uniswap = n.poolManagers[0]?.address.toLowerCase()
+  const venueOf = (hook: string, manager: string) =>
+    n.venues[hook] ?? managerVenue.get(manager) ?? (hook === ZERO && manager === uniswap ? 'Uniswap v4' : 'Other')
   const all = (sql: string, ...p: (string | number)[]) => db.prepare(sql).all(...p) as Row[]
   const one = (sql: string, ...p: (string | number)[]) => db.prepare(sql).get(...p) as Row | undefined
   const placeholders = (k: number) => Array(k).fill('?').join(',')
@@ -69,7 +72,7 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
     const t = now()
     const ex = [...excluded]
     const pools = all(
-      `SELECT p.token, p.venue, p.quote, p.creator, p.block, p.timestamp, p.initial_price, p.hook FROM pools p
+      `SELECT p.token, p.venue, p.quote, p.creator, p.block, p.timestamp, p.initial_price, p.hook, p.pool_manager FROM pools p
        JOIN (SELECT token, MIN(block) b FROM pools GROUP BY token) f ON f.token = p.token AND f.b = p.block`,
     )
     const tokens = new Map(all('SELECT * FROM tokens').map((r) => [r.address, r]))
@@ -156,7 +159,7 @@ export function serve(db: DatabaseSync, n: Network, port: number) {
         image: (images.get(a) as string | undefined) ?? null,
         name: tk?.name ?? null,
         symbol: tk?.symbol ?? null,
-        venue: venueOf(p.hook as string),
+        venue: venueOf(p.hook as string, p.pool_manager as string),
         hook: p.hook,
         quote: p.quote,
         quoteSymbol: hype.has(p.quote as string) ? 'HYPE' : ((tokens.get(p.quote)?.symbol as string) ?? null),

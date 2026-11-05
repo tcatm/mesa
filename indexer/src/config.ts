@@ -8,7 +8,12 @@
 export interface Network {
   chainId: number
   rpc: string
-  poolManagers: { address: string; name: string }[]
+  /**
+   * Every v4 PoolManager to index. `venue` names pools on it whose hook isn't
+   * in `venues`. `backfill` marks a manager added after the database began:
+   * its history is indexed beside the live chain until it catches up.
+   */
+  poolManagers: { address: string; name: string; venue?: string; backfill?: true }[]
   /** hook address (lowercase) -> launchpad name. A pool with no hook is "Uniswap v4". */
   venues: Record<string, string>
   /** Tokens worth exactly 1 HYPE: native HYPE (address zero) and fully backed wrappers. */
@@ -31,7 +36,27 @@ export const networks: Record<string, Network> = {
     rpc: 'https://rpc.agoradex.app',
     poolManagers: [
       { address: '0xe2e105d3f7209a9da11f83ccf3e7398a753823f1', name: 'Uniswap v4' },
-      { address: '0x5fb015a49f5b35073f9ce01c2adb287a75f89600', name: 'ElysPump PoolManager' },
+      { address: '0x5fb015a49f5b35073f9ce01c2adb287a75f89600', name: 'ElysPump PoolManager', venue: 'ElysPump' },
+      // Other launchpads' own PoolManagers, found by their Initialize events.
+      { address: '0xb308b5df891c300a5f5a5b8fdbc30108ba842490', name: 'Kleos PoolManager', venue: 'Kleos', backfill: true },
+      ...[
+        '0x06c63714fbf1f5753017123e2fcfdede4540b2c4',
+        '0x5c54a7293d96b11a29a0256ee8dfdbc3059637da',
+        '0x3564d7defdb26abe3f0953ee57d93953ec94fa25',
+        '0xeef19ba12957efaa08a2769a47660c9665b972df',
+        '0x7654db7229130530a3033675abd4e35e59c57ead',
+        '0x9fc48776883a89b9611979069ce25be1e82a536d',
+        '0xe5bdc9a87b54ac1624cb51095dc86636378c4fb6',
+        '0x5246d97812ec0786065c88413555a3ada6a47da8',
+        '0x349aa7dd9d3cf3cff2eeb0993ea84ae1740d38e3',
+        '0x794ad5fe8227524619c7bbf6b4572c9d08d9ff1f',
+        '0xe4ee99e8d5b1c8bf0b09fa8c48347329e2269491',
+        '0x31ca735981faff9144d479f967beee411516c54c',
+        '0x21bf73ea677311ca25ad2935ca912b2a8d43dcd4',
+        '0x3067db655bfb661d021f47b72748954bc6211583',
+        '0xa8c3806d3c56b13e7799200f359fd9ed46c51714',
+        '0xf1c4b572bb6712956eb65d407f3b821b538774ae',
+      ].map((address) => ({ address, name: 'PoolManager', backfill: true as const })),
     ],
     venues: {
       '0x00c002cdae688f39a90cf2ad74c59421c9502acc': 'BOXA',
