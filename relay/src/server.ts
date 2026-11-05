@@ -288,6 +288,13 @@ async function sendRaw(raw: string, ip: string): Promise<string> {
   const replaces = [...pending.values()].find((r) => r.from === from && r.nonce === tx.nonce)
   if (tx.nonce !== expected && !replaces) reject('nonce', -32000, `nonce ${tx.nonce} is not the next one (${expected})`)
   const price = tx.maxFeePerGas ?? tx.gasPrice ?? BigNumber.from(0)
+  // A transaction whose max fee is below Elysium's base fee when it lands is
+  // dropped there, silently, and every later nonce of the wallet waits on it.
+  // Relayed transactions land about a minute later, so require headroom.
+  const floor = await feeFloor()
+  if (price.lt(floor)) {
+    reject('fee', -32000, `max fee too low for the relay: set at least ${utils.formatUnits(floor, 'gwei')} gwei (you only pay the base fee)`)
+  }
   if (balance.lt(tx.gasLimit.mul(price).add(tx.value))) reject('funds', -32000, 'insufficient funds for gas * price + value')
 
   // A transaction that would revert is not worth inbox gas. One exception:
@@ -347,6 +354,20 @@ function pendingTxObject(r: Relayed) {
 
 const BLOCKED = /^(debug_|trace_|admin_|personal_|txpool_|miner_|engine_|eth_sign|eth_sendTransaction$|eth_accounts$)/
 
+/** The least max fee a relayed transaction must offer: twice the base fee, and at least MIN_FEE_GWEI. */
+const minFee = utils.parseUnits(env.MIN_FEE_GWEI ?? '0.2', 'gwei')
+let baseCache: { at: number; base: BigNumber } | null = null
+async function baseFee(): Promise<BigNumber> {
+  if (baseCache && Date.now() - baseCache.at < 5_000) return baseCache.base
+  const b = await upstream.getBlock('latest')
+  baseCache = { at: Date.now(), base: b.baseFeePerGas ?? utils.parseUnits('0.1', 'gwei') }
+  return baseCache.base
+}
+async function feeFloor(): Promise<BigNumber> {
+  const twice = (await baseFee()).mul(2)
+  return twice.gt(minFee) ? twice : minFee
+}
+
 async function handle(req: RpcReq, ip: string): Promise<unknown> {
   const p = req.params ?? []
   if (BLOCKED.test(req.method)) reject('method', -32601, `method ${req.method} is not available`)
@@ -369,6 +390,15 @@ async function handle(req: RpcReq, ip: string): Promise<unknown> {
       return String(cfg.chainId)
     case 'eth_sendRawTransaction':
       return sendRaw(String(p[0]), ip)
+    // Fee suggestions with headroom, so wallets sign fees that still clear the
+    // base fee a minute later. Elysium charges only the base fee: the rest of
+    // the max fee is never spent, and tips are ignored.
+    case 'eth_gasPrice': {
+      const f = (await feeFloor()).mul(3).div(2)
+      return utils.hexValue(f)
+    }
+    case 'eth_maxPriorityFeePerGas':
+      return utils.hexValue(await feeFloor())
     case 'eth_getTransactionCount': {
       if (p[1] !== 'pending') return forward(req)
       const count = BigNumber.from(await forward({ ...req, params: [p[0], 'latest'] })).toNumber()
