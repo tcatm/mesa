@@ -36,9 +36,9 @@ const ZERO = '0x0000000000000000000000000000000000000000'
  * Used for Mesa's own token; keep it to tokens whose team asked for it.
  */
 export const IMAGE_OVERRIDES: Record<string, string> = {
-  // $MESA: mint mark on a slate circle (Nov 2026).
+  // $MESA: mint mark on the brand #1B1B1B (Nov 2026).
   '0xd1fe265a3a30177a0c5e74f535a2350b5f370197':
-    'https://api.mesa.cx/media/9f22d028643d7754d7b7fc21c6a97d52427f0848000db7442b7ddb0370366d6a.png',
+    'https://api.mesa.cx/media/becd5e867eea432cdcb98b72a0e6b66fb166e9c3b87c184217e8d498b4ba85d4.png',
 }
 
 export const networks: Record<string, Network> = {
