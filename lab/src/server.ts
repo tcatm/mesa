@@ -1,11 +1,13 @@
 import { createServer } from 'node:http'
 import { config } from './config.js'
 import { readApp, spentToday, state } from './store.js'
+import { watch } from './live.js'
 
 /**
  * Served at api.mesa.cx/lab/:
  *   GET /lab/api/status     the agent's wallet, what it's doing, today's spend
  *   GET /lab/api/projects   everything it has shipped
+ *   GET /lab/api/live       server-sent events: its steps, thoughts and code as it writes
  *   GET /lab/<slug>/        an app, in a strict sandbox
  *
  * Apps are written by a model with no human review, so each is served with a
@@ -66,6 +68,7 @@ export function serve(o: { address: string; balance: () => Promise<number | null
       return
     }
     if (path === '/api/projects') return json(state.projects)
+    if (path === '/api/live') return watch(res)
 
     const m = /^\/([a-z0-9-]{2,40})\/?$/.exec(path)
     if (m) {

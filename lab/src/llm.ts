@@ -13,9 +13,15 @@ export async function chat(o: {
   user: string
   maxTokens: number
   json?: boolean
+  /** Called with each piece of the answer as it streams in. */
+  onToken?: (t: string) => void
 }): Promise<string> {
   if (spentToday() >= config.budgetUsdPerDay) throw new BudgetError(`today's model budget of $${config.budgetUsdPerDay} is used up`)
-  if (config.mock) return mock(o.user)
+  if (config.mock) {
+    const text = mock(o.user)
+    if (o.onToken) for (let i = 0; i < text.length; i += 60) (o.onToken(text.slice(i, i + 60)), await new Promise((r) => setTimeout(r, 15)))
+    return text
+  }
   const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -33,9 +39,11 @@ export async function chat(o: {
       ],
       ...(o.json ? { response_format: { type: 'json_object' } } : {}),
       usage: { include: true },
+      ...(o.onToken ? { stream: true } : {}),
     }),
     signal: AbortSignal.timeout(300_000),
   })
+  if (o.onToken && r.ok && r.body) return readStream(r.body, o.onToken)
   const body = (await r.json().catch(() => null)) as {
     choices?: { message?: { content?: string } }[]
     usage?: { cost?: number }
@@ -48,6 +56,48 @@ export async function chat(o: {
   for (const d of Object.keys(state.spend).sort().slice(0, -31)) delete state.spend[d]
   save()
   const text = body.choices?.[0]?.message?.content ?? ''
+  if (!text.trim()) throw new Error('the model answered with nothing')
+  return text
+}
+
+/** Reads a streamed answer (server-sent events), passing each piece on and counting its cost. */
+async function readStream(body: ReadableStream<Uint8Array>, onToken: (t: string) => void): Promise<string> {
+  const reader = body.getReader()
+  const dec = new TextDecoder()
+  let buf = ''
+  let text = ''
+  let cost = 0
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buf += dec.decode(value, { stream: true })
+    let nl: number
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim()
+      buf = buf.slice(nl + 1)
+      if (!line.startsWith('data:')) continue
+      const data = line.slice(5).trim()
+      if (data === '[DONE]') continue
+      try {
+        const j = JSON.parse(data) as {
+          choices?: { delta?: { content?: string } }[]
+          usage?: { cost?: number }
+          error?: { message?: string }
+        }
+        if (j.error) throw new Error(`OpenRouter: ${j.error.message ?? 'stream error'}`)
+        const t = j.choices?.[0]?.delta?.content
+        if (t) {
+          text += t
+          onToken(t)
+        }
+        if (j.usage?.cost !== undefined) cost = Number(j.usage.cost)
+      } catch (e) {
+        if (e instanceof Error && e.message.startsWith('OpenRouter')) throw e
+      }
+    }
+  }
+  state.spend[today()] = spentToday() + (Number.isFinite(cost) ? cost : 0)
+  save()
   if (!text.trim()) throw new Error('the model answered with nothing')
   return text
 }
@@ -70,6 +120,7 @@ function mock(user: string): string {
       slug: 'gas-lantern',
       tagline: "Live Elysium gas price and block pace, with a cost calculator for any gas limit.",
       about: "Shows Elysium's current gas price and recent blocks from Mesa's public RPC, and turns any gas limit into a cost in HYPE.",
+      thought: "Builders deploying on Elysium keep asking what a transaction will cost. A live gas readout with a calculator answers that in one glance.",
     })
   if (user.includes('ICON'))
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" fill="#1B1B1B"/><circle cx="256" cy="280" r="120" fill="#B6FFEE"/><rect x="246" y="120" width="20" height="80" fill="#B6FFEE"/></svg>'

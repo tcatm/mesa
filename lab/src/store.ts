@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { generatePrivateKey } from 'viem/accounts'
 import type { Hex } from 'viem'
 import { config } from './config.js'
+import { live } from './live.js'
 
 /**
  * Everything the lab keeps, in its data directory: its wallet key (made on
@@ -58,6 +59,7 @@ export function note(text: string) {
   state.log.unshift({ at: Math.floor(Date.now() / 1000), text })
   state.log = state.log.slice(0, 100)
   save()
+  live('step', text)
   console.log(JSON.stringify({ lab: text }))
 }
 

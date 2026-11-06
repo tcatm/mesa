@@ -5,6 +5,7 @@ import { config } from './config.js'
 import { BudgetError } from './llm.js'
 import { build, icon, idea, review, type Idea } from './make.js'
 import { serve } from './server.js'
+import { live } from './live.js'
 import { note, save, spentToday, state, walletKey, writeApp, type Project } from './store.js'
 
 /**
@@ -24,6 +25,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 export type Phase = 'off' | 'paused' | 'needs-key' | 'needs-funds' | 'waiting' | 'working' | 'budget'
 export let phase: Phase = 'waiting'
+function setPhase(p: Phase) {
+  if (p === phase) return
+  phase = p
+  live('phase', p)
+}
 export let nextAt = 0
 
 async function balance(): Promise<number> {
@@ -102,7 +108,7 @@ async function whenIndexed<T>(f: () => Promise<T>): Promise<T> {
 }
 
 async function makeProject() {
-  phase = 'working'
+  setPhase('working')
   note('Thinking of the next project')
   const symbols = await takenSymbols()
   let i: Idea | null = null
@@ -115,6 +121,7 @@ async function makeProject() {
     i = cand
   }
   if (!i) throw new Error('every idea clashed with an existing name or ticker')
+  if (i.thought) live('thought', i.thought)
   note(`Building ${i.name} ($${i.symbol}): ${i.tagline}`)
   const url = `${config.publicUrl}/${i.slug}/`
   let html: string | null = null
@@ -123,10 +130,12 @@ async function makeProject() {
       html = await build(i, url)
     } catch (e) {
       if (e instanceof BudgetError || k === 1) throw e
-      note(`First build of ${i.name} didn't pass checks, building again`)
+      note(`First build of ${i.name} didn't pass checks (${e instanceof Error ? e.message : String(e)}), building again`.slice(0, 280))
     }
   }
+  live('step', 'Asking a second model to review it')
   const verdict = await review(i, html!)
+  live('thought', `Review: ${verdict.reason}`)
   if (!verdict.ok) {
     note(`Dropped ${i.name} at review: ${verdict.reason}`)
     return
@@ -139,6 +148,7 @@ async function makeProject() {
   save()
   note(`Published ${i.name} at ${url}`)
   if (config.dryRun) return note(`Dry run: not launching $${i.symbol}`)
+  live('step', `Launching $${i.symbol} on Mesa from my wallet (2% fee, anti-snipe on, no dev buy)`)
 
   const res = await mesa.launch({
     name: i.name,
@@ -193,15 +203,15 @@ function due(): number {
 }
 
 async function tick() {
-  if (!config.enabled) return void (phase = 'off')
-  if (existsSync(join(config.dataDir, 'STOP'))) return void (phase = 'paused')
-  if (!config.openrouterKey && !config.mock) return void (phase = 'needs-key')
+  if (!config.enabled) return setPhase('off')
+  if (existsSync(join(config.dataDir, 'STOP'))) return setPhase('paused')
+  if (!config.openrouterKey && !config.mock) return setPhase('needs-key')
   await maybeClaim().catch((e) => console.error('claim', e))
-  if (state.projects.length >= config.maxTotal) return void (phase = 'paused')
-  if (spentToday() >= config.budgetUsdPerDay) return void (phase = 'budget')
+  if (state.projects.length >= config.maxTotal) return setPhase('paused')
+  if (spentToday() >= config.budgetUsdPerDay) return setPhase('budget')
   nextAt = Math.max(due(), (state.lastError?.at ?? 0) + 3600)
-  if (now() < nextAt) return void (phase = 'waiting')
-  if (!config.dryRun && (await balance()) < config.minHype) return void (phase = 'needs-funds')
+  if (now() < nextAt) return setPhase('waiting')
+  if (!config.dryRun && (await balance()) < config.minHype) return setPhase('needs-funds')
   try {
     await makeProject()
     state.lastError = null
@@ -211,7 +221,7 @@ async function tick() {
     note(e instanceof BudgetError ? 'Out of model budget for today' : `Something went wrong, trying again in an hour: ${message.slice(0, 160)}`)
   } finally {
     save()
-    phase = 'waiting'
+    setPhase('waiting')
     nextAt = Math.max(due(), (state.lastError?.at ?? 0) + 3600)
   }
 }

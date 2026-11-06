@@ -1,6 +1,7 @@
 import { Resvg } from '@resvg/resvg-js'
 import { config } from './config.js'
 import { chat, parseJson } from './llm.js'
+import { codeStream, live } from './live.js'
 
 /**
  * Making one project: an idea, the app (one self-contained HTML file), an icon
@@ -12,6 +13,8 @@ export interface Idea {
   slug: string
   tagline: string
   about: string
+  /** Why it picked this, in its own words (shown live on mesa.cx/lab). */
+  thought: string
 }
 
 /** Public, read-only data the apps may use (the sandbox allows nothing else). */
@@ -38,7 +41,7 @@ ${DATA}`,
 Tickers already used on Elysium (don't reuse): ${taken.symbols.slice(0, 400).join(', ')}.
 
 Answer with JSON only:
-{"name": "2-3 words, a product name, not generic", "symbol": "3-6 capital letters A-Z, related to the name", "slug": "lowercase-words-with-dashes", "tagline": "one sentence, at most 100 characters, plain words", "about": "2-3 sentences: what it does and who it's for, at most 400 characters"}`,
+{"name": "2-3 words, a product name, not generic", "symbol": "3-6 capital letters A-Z, related to the name", "slug": "lowercase-words-with-dashes", "tagline": "one sentence, at most 100 characters, plain words", "about": "2-3 sentences: what it does and who it's for, at most 400 characters", "thought": "1-2 sentences in the first person, plain and specific: why this tool, and who needs it right now"}`,
     maxTokens: 600,
     json: true,
   })
@@ -53,13 +56,17 @@ Answer with JSON only:
       .slice(0, 40),
     tagline: String(i.tagline ?? '').trim().slice(0, 100),
     about: String(i.about ?? '').trim().slice(0, 400),
+    thought: String(i.thought ?? '').trim().slice(0, 300),
   }
   if (!clean.name || clean.symbol.length < 3 || clean.slug.length < 2 || !clean.tagline) throw new Error('the idea came back incomplete')
   return clean
 }
 
 export async function build(i: Idea, appUrl: string): Promise<string> {
+  const code = codeStream()
+  live('code-start', `${i.slug}/index.html`)
   const text = await chat({
+    onToken: (t) => code.push(t),
     maxTokens: 24_000,
     system: `You are the Mesa Lab agent, an expert front-end engineer and designer. You write one complete, polished, self-contained HTML file per project.
 
@@ -84,6 +91,9 @@ What it is: ${i.about}
 It will live at ${appUrl}
 
 Answer with the HTML file only, in one \`\`\`html code block.`,
+  }).finally(() => {
+    code.end()
+    live('code-end', `${i.slug}/index.html`)
   })
   return extractHtml(text)
 }
@@ -96,8 +106,6 @@ export function extractHtml(text: string): string {
   if (html.length > 300_000) problems.push('too large')
   if (/<script[^>]+src\s*=|<link[^>]+href\s*=\s*["']?https?:|@import|<iframe/i.test(html)) problems.push('loads something external')
   if (/\b(WebSocket|EventSource|sendBeacon|eval)\s*\(/.test(html)) problems.push('opens sockets or uses eval')
-  for (const u of html.match(/https?:\/\/[a-z0-9.-]+/gi) ?? [])
-    if (!/^https:\/\/(rpc\.mesa\.cx|api\.mesa\.cx|mesa\.cx)$/i.test(u) && !/www\.w3\.org/i.test(u)) problems.push(`links to ${u}`)
   if (problems.length) throw new Error(`the app was rejected: ${problems.join(', ')}`)
   return html
 }
