@@ -9,6 +9,7 @@ import { live } from './indexer.js'
 import { bridgeLookup, bridgeStats } from './bridgeTracker.js'
 import { UpdateError, listUpdates, migrateUpdates, postUpdate } from './updates.js'
 import { PX, tableBuilder } from './table.js'
+import { startMev } from './mev.js'
 
 const DAY = 86_400
 const HOUR = 3_600
@@ -39,6 +40,7 @@ type Row = Record<string, unknown>
 export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number) {
   startHypeUsd()
   migrateUpdates(db)
+  const mev = startMev(db)
   const hype = new Set(n.hype.map((a) => a.toLowerCase()))
   const usd = n.usd?.address.toLowerCase()
   const notListed = new Set([...hype, ...(usd ? [usd] : [])])
@@ -555,7 +557,12 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
               a,
               before,
               num('limit', 50, 500),
-            ),
+            ).map((t) => ({
+              ...t,
+              // A sandwich bot's trade, or a trade a bot sandwiched (see mev.ts).
+              mev: mev.isBot(t.trader as string | null),
+              sandwiched: mev.isVictim(t.tx as string),
+            })),
           )
         }
         if (parts[2] === 'candles') {
@@ -571,7 +578,11 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
               a,
               ...ex,
               num('limit', 100, 1_000),
-            ).map((h) => ({ ...h, pct: supply ? ((h.balance as number) / supply) * 100 : null })),
+            ).map((h) => ({
+              ...h,
+              pct: supply ? ((h.balance as number) / supply) * 100 : null,
+              mev: mev.isBot(h.address as string),
+            })),
           )
         }
       }
