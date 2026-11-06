@@ -162,6 +162,10 @@ async function makeVamp() {
       check.style === 'serious'
         ? ((await picture(searches)) ?? (await meme()))
         : ((await meme()) ?? (await picture([...searches, 'cute animal'])))
+    if (!pic) {
+      log(`Skipped $${t.symbol}: no icon found`)
+      continue
+    }
     const blurb = `Attention token: $${t.symbol} is trending on ${t.chain}.`
     const coin: NewsCoin = {
       kind: 'vamp',

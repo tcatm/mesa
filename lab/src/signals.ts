@@ -99,7 +99,7 @@ async function prepare() {
         : kind === 'readout'
           ? crt(n.name, n.serial, ['> SPREAD ACROSS ELYSIUM', `COVERAGE ${ours.toLocaleString('en-US')} / ${total.toLocaleString('en-US')}`, '> EXPANDING'])
           : lineArt(n.serial)
-  const image = await upload(png)
+  const image = (await upload(png)) ?? (await upload(png)) // one retry
   const s: Signal = { name: n.name, symbol: n.ticker, caption, image, token: null, tx: null, at: now() }
   const description = `Mesa domination unit ${n.serial}. Mission: spread Mesa across Elysium. Coverage at block ${block.toLocaleString('en-US')}: ${ours.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} Elysium launches are Mesa's. mesa.cx`.slice(0, 300)
   return { s, description }
@@ -107,6 +107,7 @@ async function prepare() {
 
 async function makeSignal() {
   const { s, description } = await prepare()
+  if (!s.image) return log(`Skipped ${s.name}: its icon didn't upload`)
   if (config.dryRun) {
     signals().unshift(s)
     save()
@@ -154,6 +155,7 @@ async function runTurbo(seconds: number) {
     jobs.push(
       (async () => {
         const { s, description } = await prepare()
+        if (!s.image) return // never launch without an icon
         const form: LaunchForm = {
           name: s.name, symbol: s.symbol, description, image: s.image ?? '', website: 'https://mesa.cx/lab', twitter: '', telegram: '',
           feePct: config.newsFeePct, payout: 'wallet', feeRecipient: account.address, recipients: [], holdersPct: 0, buybackPct: 0,

@@ -380,7 +380,8 @@ async function makeWorker() {
           : roll < 0.68
             ? botLogo({ prop: pick(['radar', 'server', 'compass', 'telescope', 'map', 'magnifier', 'dish', 'database', 'terminal']) })
             : logo(serial)
-  const image = await upload(png)
+  const image = (await upload(png)) ?? (await upload(png)) // one retry
+  if (!image) return log(`Skipped ${name}: its icon didn't upload`)
   const w: Worker = { name, symbol, kind, mission: m.mission, report: m.report, image, token: null, tx: null, at: now() }
   if (config.dryRun) {
     workers().unshift(w)

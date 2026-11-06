@@ -106,8 +106,8 @@ async function postProfile(token: string, c: IdeaCoin) {
 
 async function logo(prop: string): Promise<string | null> {
   const png = botLogo({ prop: PROP_NAMES.includes(prop) ? prop : undefined })
-  const url = await upload(png)
-  if (!url) log('The logo upload failed; launching without one')
+  const url = (await upload(png)) ?? (await upload(png)) // one retry
+  if (!url) log('The logo upload failed; skipping this one')
   return url
 }
 
@@ -173,6 +173,7 @@ async function makeIdea() {
   if (!(await symbolFree(symbol))) return log(`$${symbol} is taken on Elysium; skipped ${name}`)
 
   c.image = await logo(String(a.prop ?? '').trim().toLowerCase())
+  if (!c.image) return
   if (config.dryRun) {
     ideas().unshift(c)
     save()
