@@ -57,6 +57,9 @@ export async function chat(o: {
     usage?: { cost?: number }
     error?: { message?: string }
   } | null
+  // Some models no longer allow reasoning to be switched off: ask again with a little of it.
+  if (r.status === 400 && /reasoning is mandatory/i.test(body?.error?.message ?? '') && (o.effort ?? 'none') === 'none')
+    return chat({ ...o, effort: 'low', maxTokens: o.maxTokens + 2_000 })
   if (!r.ok || !body) throw new Error(`OpenRouter ${r.status}: ${body?.error?.message ?? 'no answer'}`)
   addSpend(Number(body.usage?.cost ?? 0), bucket)
   const text = body.choices?.[0]?.message?.content ?? ''
