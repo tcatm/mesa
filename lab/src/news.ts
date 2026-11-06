@@ -17,6 +17,8 @@ import { save, spentToday, state, walletKey, type NewsCoin } from './store.js'
  * logo, and every coin says it isn't affiliated with anyone it names.
  */
 const mesa = new Mesa({ privateKey: walletKey('news'), maxHypePerTx: 0.01 })
+/** The same wallet is used by the idea agent (ideas.ts); one client, so nonces never clash. */
+export const newsMesa = mesa
 export const newsAddress = mesa.address!
 const now = () => Math.floor(Date.now() / 1000)
 export let newsPhase: 'off' | 'needs-key' | 'needs-funds' | 'budget' | 'waiting' | 'working' | 'full' = 'off'
@@ -301,7 +303,7 @@ Hard rules, no exceptions: nothing built on a death, disaster, attack, war casua
   log(`Launched $${symbol} (${name}): ${blurb}`)
 }
 
-async function maybeClaim() {
+export async function maybeClaim() {
   if (config.dryRun || now() - (state.newsLastClaimAt ?? 0) < 86_400) return
   const { claimableHype } = await mesa.claimable()
   if (Number(claimableHype) < config.claimAt) return
@@ -319,7 +321,12 @@ async function tick() {
   if (running) return
   running = true
   try {
-    if (!config.newsEnabled) return void (newsPhase = 'off')
+    if (!config.newsEnabled) {
+      newsPhase = 'off'
+      // The idea agent shares this wallet, so the claim still runs.
+      if (config.ideasEnabled) await maybeClaim().catch((e) => console.error('news claim', e))
+      return
+    }
     if (!config.openrouterKey && !config.mock) return void (newsPhase = 'needs-key')
     await maybeClaim().catch((e) => console.error('news claim', e))
     if (spentToday('news') >= config.newsBudgetUsdPerDay) return void (newsPhase = 'budget')

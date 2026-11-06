@@ -38,6 +38,24 @@ export interface State {
   newsLog?: { at: number; text: string }[]
   newsLastClaimAt?: number
   newsClaimedHype?: number
+  /** The idea agent (ideas.ts): open project ideas, each with a coin, for anyone to fork and build. */
+  ideas?: IdeaCoin[]
+  ideasLog?: { at: number; text: string }[]
+}
+
+export interface IdeaCoin {
+  name: string
+  symbol: string
+  tagline: string
+  /** The problem it solves, what to build, and three milestones. */
+  problem: string
+  build: string
+  milestones: string[]
+  category: string
+  image: string | null
+  token: string | null
+  tx: string | null
+  at: number
 }
 
 export interface NewsCoin {

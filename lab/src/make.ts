@@ -151,7 +151,21 @@ async function drawnIcon(i: Idea): Promise<Buffer> {
     console.error('icon prop', e)
     return 'a small glowing tool'
   })
-  const prompt = `A coin logo for a developer tool called ${i.name}. Use the reference image for the character and style: the same small grey robot with a rounded square head, a thin antenna with a mint ball on top, and two dark round eyes with tiny mint glints, no mouth. Here the robot is holding or using ${prop.trim().replace(/[."]+$/, '')}. Flat vector illustration, clean geometric shapes, soft subtle shading, no outlines. Solid near-black background #1B1B1B filling the whole square edge to edge, mint #B6FFEE as the only accent colour, light grey robot. The robot and prop centred and fully inside a circle crop, with breathing room. No text, no letters, no numbers, no border, no frame, no coin rim.`
+  const buf = await drawBot({ what: `a developer tool called ${i.name}`, prop })
+  live('step', `Drew the coin logo: the bot with ${prop.trim().replace(/[."]+$/, '')}`)
+  return buf
+}
+
+/**
+ * The Mesa Lab bot (Peek's icon as the reference) with one prop, from the image
+ * model. `accent` swaps the mint accent and `scene` adds a pose or setting, so
+ * many coins can share the character without looking alike.
+ */
+export async function drawBot(o: { what: string; prop: string; accent?: string; scene?: string; bucket?: 'lab' | 'news' }): Promise<Buffer> {
+  if (config.mock) throw new Error('mock')
+  const prop = o.prop.trim().replace(/[."]+$/, '')
+  const accent = o.accent ?? 'mint #B6FFEE'
+  const prompt = `A coin logo for ${o.what}. Use the reference image for the character and style: the same small grey robot with a rounded square head, a thin antenna with a glowing ball on top, and two dark round eyes with tiny glints, no mouth. Here the robot is holding or using ${prop}${o.scene ? `, ${o.scene}` : ''}. Flat vector illustration, clean geometric shapes, soft subtle shading, no outlines. Solid near-black background #1B1B1B filling the whole square edge to edge, ${accent} as the only accent colour (antenna ball, eye glints and the prop's glow), light grey robot. The robot and prop centred and fully inside a circle crop, with breathing room. No text, no letters, no numbers, no border, no frame, no coin rim.`
   const r = await fetch('https://openrouter.ai/api/v1/images', {
     method: 'POST',
     headers: {
@@ -174,12 +188,11 @@ async function drawnIcon(i: Idea): Promise<Buffer> {
     error?: { message?: string }
   } | null
   if (!r.ok || !b) throw new Error(`images ${r.status}: ${b?.error?.message ?? 'no answer'}`)
-  addSpend(Number(b.usage?.cost ?? 0.05))
+  addSpend(Number(b.usage?.cost ?? 0.05), o.bucket ?? 'lab')
   const img = b.data?.[0]?.b64_json
   if (!img) throw new Error('no image in the answer')
   const buf = Buffer.from(img, 'base64')
   if (buf.length < 2_000 || buf.length > 3_000_000) throw new Error(`odd image size ${buf.length}`)
-  live('step', `Drew the coin logo: the bot with ${prop.trim().replace(/[."]+$/, '')}`)
   return buf
 }
 
