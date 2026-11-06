@@ -15,12 +15,14 @@ export interface Idea {
   about: string
   /** Why it picked this, in its own words (shown live on mesa.cx/lab). */
   thought: string
+  /** A detailed spec, when the team suggested the project (lab/seed.json). */
+  brief?: string
 }
 
 /** Public, read-only data the apps may use (the sandbox allows nothing else). */
 export const DATA = `Live data the app may read (and nothing else; every other request is blocked):
-- Elysium JSON-RPC: POST https://rpc.mesa.cx with {"jsonrpc":"2.0","id":1,"method":...,"params":[...]}. Read methods only: eth_blockNumber, eth_getBlockByNumber, eth_getTransactionByHash, eth_getTransactionReceipt, eth_getBalance, eth_getCode, eth_getStorageAt, eth_call, eth_gasPrice, eth_feeHistory, eth_chainId, eth_getLogs (keep block ranges under 1,000). Elysium is an Arbitrum Nitro L2 on HyperEVM, chain id 99901, gas token HYPE (18 decimals), about one block per transaction.
-- Mesa's indexer API (GET, JSON): https://api.mesa.cx/elysium/stats (chain-wide numbers), /elysium/tokens?sort=new|volume|mcap&limit=20, /elysium/tokens/<address>, /elysium/tx/<hash> (what a transaction did), /elysium/bridge (HyperEVM bridge totals and recent transfers), /elysium/venues (launchpads).
+- Elysium JSON-RPC: POST https://rpc.mesa.cx with {"jsonrpc":"2.0","id":1,"method":...,"params":[...]}. Read methods only: eth_blockNumber, eth_getBlockByNumber, eth_getTransactionByHash, eth_getTransactionReceipt, eth_getBalance, eth_getCode, eth_getTransactionCount, eth_getStorageAt, eth_call, eth_gasPrice, eth_feeHistory, eth_chainId, eth_getLogs (keep block ranges under 1,000). Elysium is an Arbitrum Nitro L2 on HyperEVM, chain id 99901, gas token HYPE (18 decimals), about one block per transaction.
+- Mesa's indexer API (GET, JSON): https://api.mesa.cx/elysium/stats (chain-wide numbers), /elysium/tokens?sort=new|volume|mcap&limit=20, /elysium/tokens/<address>, /elysium/tx/<hash> (trades, launches and burns in a transaction), /elysium/wallets/<address> (token holdings), /elysium/bridge (HyperEVM bridge totals and recent transfers), /elysium/venues (launchpads).
 Handle slow or failed requests gracefully with a visible message and a retry button.`
 
 const RULES = `Hard rules, no exceptions:
@@ -88,7 +90,10 @@ ${DATA}`,
 Name: ${i.name}
 Tagline: ${i.tagline}
 What it is: ${i.about}
-It will live at ${appUrl}
+It will live at ${appUrl}${i.brief ? `
+
+Detailed brief:
+${i.brief}` : ''}
 
 Answer with the HTML file only, in one \`\`\`html code block.`,
   }).finally(() => {

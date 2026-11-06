@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Mesa, API } from 'mesa-agent'
 import { config } from './config.js'
@@ -107,11 +107,31 @@ async function whenIndexed<T>(f: () => Promise<T>): Promise<T> {
   throw last
 }
 
+/**
+ * Projects the team hands the agent (lab/seed.json, one or a list): each is
+ * built next, right away, once. Everything after the idea (the build, review, launch) is still its own.
+ */
+function seed(): Idea | null {
+  try {
+    const raw = JSON.parse(readFileSync(new URL('../seed.json', import.meta.url), 'utf8')) as Partial<Idea> | Partial<Idea>[]
+    // A list is a queue: the first one not built yet goes next.
+    for (const s of Array.isArray(raw) ? raw : [raw]) {
+      if (!s.slug || !s.name || !s.symbol || !s.tagline || !s.about) continue
+      if (state.projects.some((p) => p.slug === s.slug || p.symbol === s.symbol)) continue
+      return { thought: '', ...s } as Idea
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 async function makeProject() {
   setPhase('working')
-  note('Thinking of the next project')
+  const seeded = seed()
+  note(seeded ? `Starting on a project the Mesa team suggested: ${seeded.name}` : 'Thinking of the next project')
   const symbols = await takenSymbols()
-  let i: Idea | null = null
+  let i: Idea | null = seeded && (await symbolFree(seeded.symbol)) ? seeded : null
   for (let k = 0; k < 3 && !i; k++) {
     const cand = await idea({ names: state.projects.map((p) => p.name), symbols })
     if (state.projects.some((p) => p.slug === cand.slug) || !(await symbolFree(cand.symbol))) {
@@ -209,7 +229,8 @@ async function tick() {
   await maybeClaim().catch((e) => console.error('claim', e))
   if (state.projects.length >= config.maxTotal) return setPhase('paused')
   if (spentToday() >= config.budgetUsdPerDay) return setPhase('budget')
-  nextAt = Math.max(due(), (state.lastError?.at ?? 0) + 3600)
+  // A suggested project skips the wait after a failed build.
+  nextAt = seed() ? due() : Math.max(due(), (state.lastError?.at ?? 0) + 3600)
   if (now() < nextAt) return setPhase('waiting')
   if (!config.dryRun && (await balance()) < config.minHype) return setPhase('needs-funds')
   try {
