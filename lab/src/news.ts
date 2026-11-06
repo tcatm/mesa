@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { Resvg } from '@resvg/resvg-js'
 import { Mesa } from 'mesa-agent'
 import { config } from './config.js'
 import { chat, parseJson } from './llm.js'
@@ -85,21 +86,32 @@ async function symbolFree(sym: string) {
 
 /** A free logo from Pollinations; none if it's down (the terminal shows a monogram). */
 async function logo(theme: string): Promise<string | null> {
-  const prompt = `flat vector coin logo icon of ${theme}, single bold simple symbol centred, solid near-black background #1B1B1B, mint #B6FFEE and soft grey colours, clean geometric shapes, no people, no faces, no real logos, no text, no letters, no border`
+  const prompt = `minimal flat vector icon of ${theme}, one simple bold symbol in the centre, plain solid dark charcoal background filling the whole image, limited palette of mint green, white and grey, crisp geometric shapes, lots of empty space around it, no circle, no ring, no frame, no border, no people, no faces, no real logos, no text, no letters`
   try {
     const r = await fetch(
       `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true&seed=${Math.floor(Math.random() * 1e6)}`,
       { signal: AbortSignal.timeout(90_000) },
     )
     if (!r.ok) return null
-    const buf = Buffer.from(await r.arrayBuffer())
-    if (buf.length < 2_000) return null
+    const raw = Buffer.from(await r.arrayBuffer())
+    if (raw.length < 2_000) return null
+    const buf = cropCorner(raw, r.headers.get('content-type') ?? 'image/jpeg')
     const up = await fetch(config.uploadUrl, { method: 'POST', body: new Uint8Array(buf) })
     const b = (await up.json().catch(() => ({}))) as { url?: string }
     return up.ok && b.url ? b.url : null
   } catch {
     return null
   }
+}
+
+/**
+ * The free service stamps a small mark in the bottom-right corner: keep the
+ * centre 84% of the image (dropping that corner) and render it back to 512px.
+ */
+function cropCorner(img: Buffer, type: string): Buffer {
+  const mime = /png|webp|jpeg|jpg/.exec(type)?.[0] ?? 'jpeg'
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="31 31 430 430"><image href="data:image/${mime === 'jpg' ? 'jpeg' : mime};base64,${img.toString('base64')}" x="0" y="0" width="512" height="512"/></svg>`
+  return Buffer.from(new Resvg(svg, { fitTo: { mode: 'width', value: 512 } }).render().asPng())
 }
 
 async function makeCoin() {
