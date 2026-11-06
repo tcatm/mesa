@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { Resvg } from '@resvg/resvg-js'
 import { Mesa } from 'mesa-agent'
 import { config } from './config.js'
@@ -122,6 +123,80 @@ async function picture(searches: string[]): Promise<{ url: string; credit: strin
   return null
 }
 
+// ---------------------------------------------------------------- meme logos: 3D emoji
+/** Microsoft's Fluent Emoji (3D), MIT licensed: lab/emoji.json lists each with its keywords. */
+interface Emoji {
+  n: string
+  p: string
+  k: string[]
+  g: string
+}
+const EMOJI: Emoji[] = (() => {
+  try {
+    return JSON.parse(readFileSync(new URL('../emoji.json', import.meta.url), 'utf8')) as Emoji[]
+  } catch {
+    return []
+  }
+})()
+const FAVOURED = new Set(['Animals & Nature', 'Food & Drink', 'Objects', 'Smileys & Emotion', 'Activities', 'Travel & Places'])
+
+function matchEmoji(terms: string[]): Emoji | null {
+  let best: { e: Emoji; s: number } | null = null
+  terms.forEach((raw, rank) => {
+    const t = raw.toLowerCase().trim()
+    if (!t) return
+    const weight = 3 - Math.min(rank, 2) // earlier terms count more
+    for (const e of EMOJI) {
+      let s = 0
+      if (e.n === t) s = 10
+      else if (e.n.split(/\s+/)[0] === t) s = 8
+      else if (e.n.split(/\s+/).includes(t)) s = 7
+      else if (e.k.includes(t)) s = 6
+      else if (e.n.includes(t)) s = 4
+      else if (e.k.some((k) => k.includes(t))) s = 2
+      if (!s) continue
+      s = s * weight + (FAVOURED.has(e.g) ? 1 : 0)
+      if (!best || s > best.s) best = { e, s }
+    }
+  })
+  return best ? (best as { e: Emoji }).e : null
+}
+
+const BACKDROPS = [
+  ['#FFE66D', '#FF9F1C'],
+  ['#9BF6FF', '#4D96FF'],
+  ['#CAFFBF', '#3BB273'],
+  ['#FFC6FF', '#C77DFF'],
+  ['#FFADAD', '#FF5D8F'],
+  ['#B6FFEE', '#2EC4B6'],
+  ['#FDFFB6', '#F9C80E'],
+  ['#E0C3FC', '#8EC5FC'],
+  ['#FFD6A5', '#FF7B54'],
+]
+
+/** A 3D emoji, big and centred on a bright gradient, uploaded to Mesa's media store. */
+async function emojiLogo(e: Emoji): Promise<string | null> {
+  const r = await fetch(`https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/${e.p.split('/').map(encodeURIComponent).join('/')}`, {
+    headers: { 'user-agent': UA },
+    signal: AbortSignal.timeout(20_000),
+  })
+  if (!r.ok) return null
+  const img = Buffer.from(await r.arrayBuffer())
+  const [a, b] = BACKDROPS[Math.floor(Math.random() * BACKDROPS.length)]!
+  const tilt = Math.round((Math.random() - 0.5) * 16)
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+    <defs><radialGradient id="g" cx="0.5" cy="0.38" r="0.75"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></radialGradient>
+    <radialGradient id="s" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#000" stop-opacity=".28"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient></defs>
+    <rect width="512" height="512" fill="url(#g)"/>
+    <ellipse cx="256" cy="430" rx="150" ry="26" fill="url(#s)"/>
+    <g transform="rotate(${tilt} 256 256)"><image href="data:image/png;base64,${img.toString('base64')}" x="66" y="56" width="380" height="380"/></g>
+  </svg>`
+  const png = Buffer.from(new Resvg(svg, { fitTo: { mode: 'width', value: 384 } }).render().asPng())
+  const up = await fetch(config.uploadUrl, { method: 'POST', headers: { 'content-type': 'image/png' }, body: new Uint8Array(png) })
+  const body = (await up.json().catch(() => ({}))) as { url?: string }
+  return up.ok && body.url ? body.url : null
+}
+
 async function makeVamp() {
   const done = new Set(vamps().map((c) => c.symbol))
   const items = (await trending()).filter((t) => !done.has(t.symbol) && !BLOCK.test(`${t.name} ${t.symbol}`))
@@ -131,20 +206,30 @@ async function makeVamp() {
       done.add(t.symbol)
       continue
     }
-    const check = parseJson<{ ok?: boolean; searches?: string[] }>(
+    const check = parseJson<{ ok?: boolean; style?: string; emoji?: string[]; searches?: string[] }>(
       await chat({
         bucket: 'news',
         model: config.newsModel,
-        maxTokens: 160,
+        maxTokens: 200,
         json: true,
         system:
-          'You check memecoin names for a launchpad and pick a photo for each logo. Reject (ok false) if the name or ticker is a slur, hateful, sexual, about a death or tragedy, or names a private individual or a minor. Otherwise ok true, with "searches": 3 image searches for a fun, eye-catching photo that fits the coin, each a single plain noun or two-word phrase that appears in photo titles (most specific first). Prefer animals, then food, objects, plants, space and nature. If the name is abstract or a word play, pick a fun concrete thing it suggests (for "three" a "dice", for "moon" a "full moon"). Examples: ["shiba inu", "dog", "puppy"], ["frog", "tree frog", "toad"], ["rocket", "space shuttle", "astronaut"]. Never a person, religion, building, brand or logo.',
-        user: `Name: ${t.name}\nTicker: $${t.symbol}\nAnswer JSON only: {"ok": true or false, "searches": ["...", "...", "..."]}`,
+          'You check memecoin names for a launchpad and pick a logo. Reject (ok false) if the name or ticker is a slur, hateful, sexual, about a death or tragedy, or names a private individual or a minor. Otherwise ok true, plus: "style": "meme" if it sounds like a meme, joke, animal or vibe coin, or "serious" if it sounds like a real product, protocol, AI or infrastructure project; "emoji": 3 single words for an emoji that fits (most fitting first), e.g. ["frog", "lizard", "money"]; "searches": 3 plain photo searches (1-2 words, most specific first) for a serious-looking picture, e.g. ["circuit board", "server", "network"]. Never a person, religion, brand or logo.',
+        user: `Name: ${t.name}\nTicker: $${t.symbol}\nAnswer JSON only: {"ok": true or false, "style": "meme" or "serious", "emoji": ["...", "...", "..."], "searches": ["...", "...", "..."]}`,
       }),
     )
     if (check.ok !== true) continue
-    const searches = (Array.isArray(check.searches) ? check.searches : []).map((s) => String(s).trim().slice(0, 40)).filter(Boolean)
-    const pic = await picture([...searches, 'cute animal'])
+    const words = (x: unknown) => (Array.isArray(x) ? x : []).map((v) => String(v).trim().slice(0, 40)).filter(Boolean)
+    const searches = words(check.searches)
+    const em = matchEmoji([...words(check.emoji), ...t.name.toLowerCase().split(/[^a-z]+/)])
+    const memeLogo = async () => {
+      if (!em) return null
+      const url = await emojiLogo(em).catch(() => null)
+      return url ? { url, credit: `${em.n} from Fluent Emoji by Microsoft (MIT)` } : null
+    }
+    const pic =
+      check.style === 'serious'
+        ? ((await picture(searches)) ?? (await memeLogo()))
+        : ((await memeLogo()) ?? (await picture([...searches, 'cute animal'])))
     const blurb = `Attention token: $${t.symbol} is trending on ${t.chain}.`
     const coin: NewsCoin = {
       kind: 'vamp',
