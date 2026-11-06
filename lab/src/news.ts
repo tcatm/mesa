@@ -85,23 +85,37 @@ async function symbolFree(sym: string) {
 }
 
 /** A free logo from Pollinations; none if it's down (the terminal shows a monogram). */
-async function logo(theme: string): Promise<string | null> {
-  const prompt = `minimal flat vector icon of ${theme}, one simple bold symbol in the centre, plain solid dark charcoal background filling the whole image, limited palette of mint green, white and grey, crisp geometric shapes, lots of empty space around it, an original design that is not any existing cartoon character, meme figure or mascot, no circle, no ring, no frame, no border, no people, no faces, no real logos, no text, no letters`
-  try {
-    const r = await fetch(
-      `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true&seed=${Math.floor(Math.random() * 1e6)}`,
-      { signal: AbortSignal.timeout(90_000) },
-    )
-    if (!r.ok) return null
-    const raw = Buffer.from(await r.arrayBuffer())
-    if (raw.length < 2_000) return null
-    const buf = cropCorner(raw, r.headers.get('content-type') ?? 'image/jpeg')
-    const up = await fetch(config.uploadUrl, { method: 'POST', body: new Uint8Array(buf) })
-    const b = (await up.json().catch(() => ({}))) as { url?: string }
-    return up.ok && b.url ? b.url : null
-  } catch {
-    return null
+/** A logo's look, chosen per coin so the list doesn't all look alike. */
+export interface LogoArt {
+  subject: string
+  style: string
+  palette: string
+}
+const STYLES = ['bold flat vector', 'glossy 3D render', 'retro pixel art', 'playful cartoon', 'risograph print', 'neon line art', 'soft watercolour', 'low-poly', 'paper cut-out', 'vintage badge']
+
+/** A free logo from Pollinations, retried with a fresh seed; none if it keeps failing (the terminal shows a monogram). */
+async function logo(art: LogoArt): Promise<string | null> {
+  const style = STYLES.includes(art.style) ? art.style : STYLES[Math.floor(Math.random() * STYLES.length)]!
+  const prompt = `${style} illustration of ${art.subject}, colour palette: ${art.palette}, one clear subject centred and filling most of a square coin icon, simple background, an original design that is not any existing cartoon character, meme figure, mascot or photograph, no people, no faces, no real logos, no text, no letters, no border`
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await fetch(
+        `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true&seed=${Math.floor(Math.random() * 1e6)}`,
+        { signal: AbortSignal.timeout(90_000) },
+      )
+      if (!r.ok) throw new Error(String(r.status))
+      const raw = Buffer.from(await r.arrayBuffer())
+      if (raw.length < 2_000) throw new Error('empty image')
+      const buf = cropCorner(raw, r.headers.get('content-type') ?? 'image/jpeg')
+      const up = await fetch(config.uploadUrl, { method: 'POST', body: new Uint8Array(buf) })
+      const b = (await up.json().catch(() => ({}))) as { url?: string }
+      if (up.ok && b.url) return b.url
+    } catch {
+      // try again with another seed
+    }
+    await new Promise((res) => setTimeout(res, 5_000))
   }
+  return null
 }
 
 /**
@@ -180,7 +194,7 @@ async function makeVamp(): Promise<boolean> {
     )
     if (check.ok !== true) continue
     const blurb = `Elysium vamp of $${t.symbol}, trending on ${t.chain}.`
-    const image = await logo(String(check.theme ?? 'a bright simple star').slice(0, 60))
+    const image = await logo({ subject: String(check.theme ?? 'a bright simple star').slice(0, 60), style: '', palette: 'bright, cheerful colours' })
     if (config.dryRun) {
       coins().unshift({ kind: 'vamp', name: t.name, symbol: t.symbol, blurb, headline: `$${t.symbol} trending on ${t.chain}`, source: 'dexscreener.com', link: t.url, image, token: null, tx: null, at: now() })
       save()
@@ -215,7 +229,7 @@ async function makeCoin() {
   if (!fresh.length) return log('No new headlines that fit the rules; checking again soon')
   const pick = fresh.sort(() => Math.random() - 0.5).slice(0, 30)
   const recent = coins().slice(0, 40).map((c) => `${c.name} ($${c.symbol})`).join(', ')
-  const answer = parseJson<{ skip?: boolean; index?: number; name?: string; symbol?: string; blurb?: string; theme?: string }>(
+  const answer = parseJson<{ skip?: boolean; index?: number; name?: string; symbol?: string; blurb?: string; logo?: Partial<LogoArt> }>(
     await chat({
       bucket: 'news',
       model: config.newsModel,
@@ -224,7 +238,7 @@ async function makeCoin() {
       system: `You turn one of today's headlines into a fun, harmless memecoin idea for Mesa, a launchpad on Elysium. Pick the most delightful, light story: science, space, nature, animals, weather oddities, technology trends, culture, records, discoveries.
 Go for what the timeline is talking about: big moments, viral stories, public figures, politics, markets, tech, sport, culture, space, science. Public figures, companies and brands may be named.
 Hard rules, no exceptions: nothing built on a death, disaster, attack, war casualties, crime victims, illness or any other tragedy; never a private individual or anyone under 18; nothing hateful, sexual or mocking a group of people. If no headline fits, answer {"skip": true}.`,
-      user: `Headlines:\n${pick.map((h, i) => `${i}. ${h.title}`).join('\n')}\n\nCoins already made (don't repeat): ${recent || 'none'}\n\nAnswer with JSON only: {"index": number, "name": "2-3 words, playful, original", "symbol": "3-6 capital letters", "blurb": "one neutral sentence under 110 characters on what inspired it", "theme": "3-6 words for a simple symbolic picture for its logo: an object or symbol, never a person's face or a brand's logo"} or {"skip": true}`,
+      user: `Headlines:\n${pick.map((h, i) => `${i}. ${h.title}`).join('\n')}\n\nCoins already made (don't repeat): ${recent || 'none'}\n\nAnswer with JSON only: {"index": number, "name": "2-3 words, playful, original", "symbol": "3-6 capital letters", "blurb": "one neutral sentence under 110 characters on what inspired it", "logo": {"subject": "a specific, vivid picture for its coin logo, 6-14 words: an object, animal, place or symbol from the story, never a person's face or a brand's logo", "style": one of ${JSON.stringify(STYLES)}, "palette": "3-4 colours that fit the story, e.g. hot orange, deep navy and cream"}} or {"skip": true}`,
     }),
   )
   const h = typeof answer.index === 'number' ? pick[answer.index] : undefined
@@ -239,7 +253,12 @@ Hard rules, no exceptions: nothing built on a death, disaster, attack, war casua
   const name = String(answer.name ?? '').trim().slice(0, 32)
   const symbol = String(answer.symbol ?? '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6)
   const blurb = String(answer.blurb ?? '').trim().slice(0, 140)
-  const theme = String(answer.theme ?? name).trim().slice(0, 60)
+  const art: LogoArt = {
+    subject: String(answer.logo?.subject ?? name).trim().slice(0, 120),
+    style: String(answer.logo?.style ?? '').trim(),
+    palette: String(answer.logo?.palette ?? 'bright, cheerful colours').trim().slice(0, 80),
+  }
+  const theme = art.subject
   if (!name || symbol.length < 3 || !blurb) return log('The idea came back incomplete; skipped')
   if (BLOCK.test(`${name} ${blurb} ${theme}`)) return log(`Dropped "${name}": it touched a topic the rules exclude`)
   // A second, independent check before anything goes on chain.
@@ -256,7 +275,7 @@ Hard rules, no exceptions: nothing built on a death, disaster, attack, war casua
   if (check.ok !== true) return log(`Dropped "${name}" at the second check`)
   if (!(await symbolFree(symbol))) return log(`$${symbol} is taken on Elysium; skipped`)
 
-  const image = await logo(theme)
+  const image = await logo(art)
   if (config.dryRun) {
     coins().unshift({ kind: 'news', name, symbol, blurb, headline: h.title, source: h.source, link: h.link, image, token: null, tx: null, at: now() })
     save()
