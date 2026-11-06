@@ -10,7 +10,7 @@ import type { DatabaseSync } from 'node:sqlite'
  *
  * Scans the last 3 days at start, then only new blocks every 30 seconds.
  */
-const WINDOW_BLOCKS = 3 // front-run to back-run, at most
+const WINDOW_BLOCKS = 10 // front-run to back-run, at most (bots sometimes take a few seconds)
 const SAME_AMOUNT = 0.01 // back-run size within 1% of the front-run's tokens
 const START_SECONDS = 3 * 86_400
 
