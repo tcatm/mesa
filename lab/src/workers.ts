@@ -3,6 +3,7 @@ import { Mesa, API } from 'mesa-agent'
 import { config } from './config.js'
 import { save, state, walletKey } from './store.js'
 import { cuteLogo } from './memelogo.js'
+import { crtScreen } from './crt.js'
 
 /**
  * The worker deployer: launches "mesa.cx worker 949395" / "mesa.cx crawler
@@ -369,7 +370,16 @@ async function makeWorker() {
   const lines = [`> ${m.mission}`.toUpperCase(), `BLOCK ${fmt(head)} // ELYSIUM`, '> REPORTING']
   // Mostly technical line art and CRT screens (some cryptic), now and then a cute robot.
   const roll = Math.random()
-  const png = roll < 0.25 ? crt(name, serial, lines) : roll < 0.45 ? puzzle(name, serial, head) : roll < 0.55 ? cuteLogo(serial, true).png : logo(serial)
+  const png =
+    roll < 0.2
+      ? crt(name, serial, lines)
+      : roll < 0.35
+        ? puzzle(name, serial, head)
+        : roll < 0.6
+          ? crtScreen({ serial, block: head, header: 'MESA.CX', footer: `BLK ${fmt(head)}` }).png
+          : roll < 0.68
+            ? cuteLogo(serial, true).png
+            : logo(serial)
   const image = await upload(png)
   const w: Worker = { name, symbol, kind, mission: m.mission, report: m.report, image, token: null, tx: null, at: now() }
   if (config.dryRun) {

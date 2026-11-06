@@ -6,6 +6,7 @@ import { newsAddress, newsStatus } from './news.js'
 import { ideasStatus } from './ideas.js'
 import { vampStatus } from './vamps.js'
 import { workerStatus } from './workers.js'
+import { signalStatus } from './signals.js'
 
 /**
  * Served at api.mesa.cx/lab/:
@@ -81,6 +82,7 @@ export function serve(o: { address: string; balance: () => Promise<number | null
     if (path === '/api/ideas') return void ideasStatus().then((s) => json(s))
     if (path === '/api/vamps') return void vampStatus().then((s) => json(s))
     if (path === '/api/workers') return void workerStatus().then((s) => json(s))
+    if (path === '/api/signals') return void signalStatus().then((s) => json(s))
 
     const m = /^\/([a-z0-9-]{2,40})\/?$/.exec(path)
     if (m) {

@@ -59,6 +59,9 @@ export const config = {
   /** The worker deployer: mesa.cx worker / crawler tokens with a real reading of the chain, drawn logos, no model calls. */
   workersEnabled: env.LAB_WORKERS_ENABLED === '1',
   workersMaxPerDay: num('LAB_WORKERS_MAX_PER_DAY', 1440),
+  /** The CRT deployer: tokens that are CRT screens, named for mesa.cx or x.com/mesa_elysium. */
+  signalsEnabled: env.LAB_SIGNALS_ENABLED === '1',
+  signalsMaxPerDay: num('LAB_SIGNALS_MAX_PER_DAY', 1440),
   /** A one-off top-up from the builder's wallet to the idea agent's: "<HYPE>:<id>", sent once per id. */
   fundIdeas: env.LAB_FUND_IDEAS ?? '',
   /** Testing: no launches, posts or claims (LAB_DRY_RUN=1), canned model answers (LAB_MOCK=1). */

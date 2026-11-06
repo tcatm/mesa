@@ -51,6 +51,11 @@ export interface State {
   workerLog?: { at: number; text: string }[]
   workerLastClaimAt?: number
   workerClaimedHype?: number
+  /** The CRT deployer (signals.ts). */
+  signals?: import('./signals.js').Signal[]
+  signalLog?: { at: number; text: string }[]
+  signalLastClaimAt?: number
+  signalClaimedHype?: number
   /** One-off top-ups already sent (config.fundIdeas ids). */
   funded?: string[]
 }
