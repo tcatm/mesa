@@ -39,6 +39,17 @@ export const IMAGE_OVERRIDES: Record<string, string> = {
   // $MESA: mint mark on the brand #1B1B1B (Nov 2026).
   '0xd1fe265a3a30177a0c5e74f535a2350b5f370197':
     'https://api.mesa.cx/media/becd5e867eea432cdcb98b72a0e6b66fb166e9c3b87c184217e8d498b4ba85d4.png',
+  // $AGORA (Agora DEX, verified), its logo as supplied by the team.
+  '0x5e5df82d563fcf36b6f853c4d09f89e2d18825b4':
+    'https://api.mesa.cx/media/7683b14d66b876cb4ab7723376743002189179f99e1802917e9263f2f367f75a.png',
+}
+
+/** Links for verified tokens whose launch metadata has none (lower-case address). */
+export const LINK_OVERRIDES: Record<string, { website?: string; twitter?: string; telegram?: string; description?: string }> = {
+  '0x5e5df82d563fcf36b6f853c4d09f89e2d18825b4': {
+    website: 'https://www.agoradex.app/',
+    twitter: 'https://x.com/agora_elysium',
+  },
 }
 
 export const networks: Record<string, Network> = {

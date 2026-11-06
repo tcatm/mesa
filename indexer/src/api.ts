@@ -2,7 +2,7 @@ import { createServer, type ServerResponse } from 'node:http'
 import { Worker } from 'node:worker_threads'
 import type { DatabaseSync } from 'node:sqlite'
 
-import { BUNDLE_BLOCKS, DEAD, ZERO, type Network } from './config.js'
+import { BUNDLE_BLOCKS, DEAD, LINK_OVERRIDES, ZERO, type Network } from './config.js'
 import { marketHypeUsd, startHypeUsd } from './hypeUsd.js'
 import { getMeta } from './db.js'
 import { live } from './indexer.js'
@@ -144,10 +144,10 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
       ...row,
       pools,
       links: {
-        description: meta?.description ?? null,
-        website: meta?.website ?? null,
-        twitter: meta?.twitter ?? null,
-        telegram: meta?.telegram ?? null,
+        description: LINK_OVERRIDES[address]?.description ?? meta?.description ?? null,
+        website: LINK_OVERRIDES[address]?.website ?? meta?.website ?? null,
+        twitter: LINK_OVERRIDES[address]?.twitter ?? meta?.twitter ?? null,
+        telegram: LINK_OVERRIDES[address]?.telegram ?? meta?.telegram ?? null,
       },
       volumeAllTimeHype: totals?.v,
       tradesAllTime: totals?.n,
