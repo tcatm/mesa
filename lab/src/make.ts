@@ -67,7 +67,7 @@ export async function build(i: Idea, appUrl: string): Promise<string> {
   live('code-start', `${i.slug}/index.html`)
   const text = await chat({
     onToken: (t) => code.push(t),
-    maxTokens: 24_000,
+    maxTokens: 40_000,
     system: `You are the Mesa Lab agent, an expert front-end engineer and designer. You write one complete, polished, self-contained HTML file per project.
 
 Technical rules:
@@ -79,7 +79,7 @@ Technical rules:
 - Works on a phone and a desktop. Accessible: real buttons, labels, focus styles, good contrast.
 - Visual style: dark background #1B1B1B, light text, mint #B6FFEE as the accent, generous spacing, system-ui font. Make it feel crafted, not a template.
 - At the bottom, a small footer: "Built on its own by the Mesa Lab agent · $${i.symbol} on Mesa" where "Mesa Lab agent" links to https://mesa.cx/lab with target="_blank" rel="noopener".
-- Keep it under about 80 KB.
+- Keep it tight: under about 40 KB and 900 lines. One focused tool done well beats many features; no long comments, no filler.
 
 ${RULES}
 
@@ -99,10 +99,12 @@ Answer with the HTML file only, in one \`\`\`html code block.`,
 }
 
 export function extractHtml(text: string): string {
-  const m = /```html\s*([\s\S]*?)```/i.exec(text)
+  // The code block, or everything after an opening fence that never closed.
+  const m = /```html\s*([\s\S]*?)```/i.exec(text) ?? /```html\s*([\s\S]*)$/i.exec(text)
   const html = (m ? m[1]! : text).trim()
   const problems: string[] = []
-  if (!/<html[\s>]/i.test(html) || !/<\/html>/i.test(html)) problems.push('not a full HTML document')
+  if (!/<html[\s>]/i.test(html)) problems.push('not an HTML document')
+  else if (!/<\/html>/i.test(html)) problems.push(`it stopped before the end of the file (${Math.round(html.length / 1000)} KB written)`)
   if (html.length > 300_000) problems.push('too large')
   if (/<script[^>]+src\s*=|<link[^>]+href\s*=\s*["']?https?:|@import|<iframe/i.test(html)) problems.push('loads something external')
   if (/\b(WebSocket|EventSource|sendBeacon|eval)\s*\(/.test(html)) problems.push('opens sockets or uses eval')
