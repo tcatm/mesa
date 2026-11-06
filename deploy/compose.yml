@@ -153,9 +153,11 @@ services:
       PORT: "8095"
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       LAB_UPLOAD_URL: http://market:8085/upload
-      LAB_MAX_PER_DAY: "2"
-      LAB_GAP_HOURS: "8"
-      LAB_BUDGET_USD: "3"
+      # Busy: a project about every hour, up to 12 a day, on at most $5 of model a day.
+      LAB_MAX_PER_DAY: "12"
+      LAB_GAP_HOURS: "1"
+      LAB_BUDGET_USD: "5"
+      LAB_MAX_TOTAL: "200"
     volumes:
       - /opt/mesa/data/lab:/data
     depends_on:
