@@ -6,10 +6,10 @@ import { BLOCK, trending } from './news.js'
 import { save, spentToday, state, walletKey, type NewsCoin } from './store.js'
 
 /**
- * The vamp agent: an Elysium version of a token trending on another chain
+ * The attention token deployer: an Elysium version of a token trending on another chain
  * (DexScreener's boosts and newest profiles): the same name and ticker, a
  * picture that fits it from Wikimedia Commons (public domain or CC0 only, so
- * free to reuse), and a description that says it's a vamp, not affiliated
+ * free to reuse), and a description that says it's an attention token, not affiliated
  * with the original. Its own wallet; at most LAB_VAMPS_MAX_PER_DAY a day,
  * spread evenly.
  */
@@ -117,7 +117,7 @@ async function picture(searches: string[]): Promise<{ url: string; credit: strin
 async function makeVamp() {
   const done = new Set(vamps().map((c) => c.symbol))
   const items = (await trending()).filter((t) => !done.has(t.symbol) && !BLOCK.test(`${t.name} ${t.symbol}`))
-  if (!items.length) return log('Nothing new trending to vamp right now')
+  if (!items.length) return log('Nothing new trending right now')
   for (const t of items.sort(() => Math.random() - 0.5).slice(0, 6)) {
     if (!(await symbolFree(t.symbol))) {
       done.add(t.symbol)
@@ -137,7 +137,7 @@ async function makeVamp() {
     if (check.ok !== true) continue
     const searches = (Array.isArray(check.searches) ? check.searches : []).map((s) => String(s).trim().slice(0, 40)).filter(Boolean)
     const pic = await picture([...searches, 'cute animal'])
-    const blurb = `Elysium vamp of $${t.symbol}, trending on ${t.chain}.`
+    const blurb = `Attention token: $${t.symbol} is trending on ${t.chain}.`
     const coin: NewsCoin = {
       kind: 'vamp',
       name: t.name,
@@ -155,12 +155,12 @@ async function makeVamp() {
     if (config.dryRun) {
       vamps().unshift(coin)
       save()
-      return log(`Dry run: would vamp $${t.symbol} (${t.name}) from ${t.chain}`)
+      return log(`Dry run: would launch $${t.symbol} (${t.name}) from ${t.chain}`)
     }
     const res = await mesa.launch({
       name: t.name,
       symbol: t.symbol,
-      description: `${blurb} An Elysium vamp by Mesa Lab; not affiliated with the original.${pic ? ` Picture: ${pic.credit}.` : ''}`.slice(0, 300),
+      description: `${blurb} Launched on Elysium by Mesa Lab's attention token deployer; not affiliated with the original.${pic ? ` Picture: ${pic.credit}.` : ''}`.slice(0, 300),
       image: pic?.url ?? undefined,
       website: 'https://mesa.cx/lab',
       feePct: config.newsFeePct,
@@ -172,7 +172,7 @@ async function makeVamp() {
     vamps().unshift(coin)
     state.vamps = vamps().slice(0, 2000)
     save()
-    return log(res.status === 'success' && res.token ? `Vamped $${t.symbol} (${t.name}), trending on ${t.chain}` : `Vamp of $${t.symbol} ${res.status}`)
+    return log(res.status === 'success' && res.token ? `Launched $${t.symbol} (${t.name}), trending on ${t.chain}` : `Launch of $${t.symbol} ${res.status}`)
   }
   log('Everything trending right now is taken or skipped')
 }
