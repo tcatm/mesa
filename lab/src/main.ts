@@ -214,6 +214,11 @@ async function maybeClaim() {
 }
 
 function due(): number {
+  // A manual nudge (LAB_KICK): go now, once, unless a project already started since.
+  if (config.kick && now() >= config.kick && (state.projects[0]?.createdAt ?? 0) < config.kick) {
+    const today = state.projects.filter((p) => p.createdAt > now() - 86_400).length
+    if (today < config.maxPerDay) return 0
+  }
   const dayAgo = now() - 86_400
   const recent = state.projects.filter((p) => p.createdAt > dayAgo)
   const last = state.projects[0]?.createdAt ?? 0

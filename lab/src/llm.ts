@@ -122,6 +122,12 @@ async function readStream(
   return text
 }
 
+/** Adds a call's cost to today's spend (for calls outside chat(), like images). */
+export function addSpend(usd: number) {
+  state.spend[today()] = spentToday() + (Number.isFinite(usd) ? usd : 0)
+  save()
+}
+
 /** JSON from a model answer, even when it's wrapped in a code fence. */
 export function parseJson<T>(text: string): T {
   const m = /```(?:json)?\s*([\s\S]*?)```/.exec(text)

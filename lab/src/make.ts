@@ -1,6 +1,6 @@
 import { Resvg } from '@resvg/resvg-js'
 import { config } from './config.js'
-import { chat, parseJson } from './llm.js'
+import { addSpend, chat, parseJson } from './llm.js'
 import { codeStream, live } from './live.js'
 
 /**
@@ -126,7 +126,60 @@ export function extractHtml(text: string): string {
   return html
 }
 
+/**
+ * The coin logo: the Mesa Lab bot (the same character every time, drawn from
+ * Peek's icon) with one prop for this tool, from an image model. Falls back to
+ * an SVG the language model draws if the image model fails.
+ */
 export async function icon(i: Idea): Promise<Buffer> {
+  try {
+    return await drawnIcon(i)
+  } catch (e) {
+    live('step', `The image model didn't come through (${String(e instanceof Error ? e.message : e).slice(0, 80)}), drawing a simpler icon`)
+    return svgIcon(i)
+  }
+}
+
+async function drawnIcon(i: Idea): Promise<Buffer> {
+  if (config.mock) throw new Error('mock')
+  const prop = await chat({
+    maxTokens: 120,
+    system: 'You suggest one simple, iconic physical prop that represents a developer tool, for a mascot to hold or use in a coin logo. Answer with the prop only, under 12 words.',
+    user: `ICON prop for "${i.name}": ${i.tagline}`,
+  }).catch(() => 'a small glowing tool')
+  const prompt = `A coin logo for a developer tool called ${i.name}. Use the reference image for the character and style: the same small grey robot with a rounded square head, a thin antenna with a mint ball on top, and two dark round eyes with tiny mint glints, no mouth. Here the robot is holding or using ${prop.trim().replace(/[."]+$/, '')}. Flat vector illustration, clean geometric shapes, soft subtle shading, no outlines. Solid near-black background #1B1B1B filling the whole square edge to edge, mint #B6FFEE as the only accent colour, light grey robot. The robot and prop centred and fully inside a circle crop, with breathing room. No text, no letters, no numbers, no border, no frame, no coin rim.`
+  const r = await fetch('https://openrouter.ai/api/v1/images', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${config.openrouterKey}`,
+      'content-type': 'application/json',
+      'http-referer': 'https://mesa.cx/lab',
+      'x-title': 'Mesa Lab',
+    },
+    body: JSON.stringify({
+      model: config.iconModel,
+      prompt,
+      aspect_ratio: '1:1',
+      input_references: [{ type: 'image_url', image_url: { url: config.iconReference } }],
+    }),
+    signal: AbortSignal.timeout(180_000),
+  })
+  const b = (await r.json().catch(() => null)) as {
+    data?: { b64_json?: string; media_type?: string }[]
+    usage?: { cost?: number }
+    error?: { message?: string }
+  } | null
+  if (!r.ok || !b) throw new Error(`images ${r.status}: ${b?.error?.message ?? 'no answer'}`)
+  addSpend(Number(b.usage?.cost ?? 0.05))
+  const img = b.data?.[0]?.b64_json
+  if (!img) throw new Error('no image in the answer')
+  const buf = Buffer.from(img, 'base64')
+  if (buf.length < 2_000 || buf.length > 3_000_000) throw new Error(`odd image size ${buf.length}`)
+  live('step', `Drew the coin logo: the bot with ${prop.trim().replace(/[."]+$/, '')}`)
+  return buf
+}
+
+async function svgIcon(i: Idea): Promise<Buffer> {
   const text = await chat({
     maxTokens: 3_000,
     system: `You design token icons as SVG: flat, bold, geometric and instantly readable at 40 pixels. ${RULES}`,

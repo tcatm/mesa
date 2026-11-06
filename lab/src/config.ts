@@ -26,6 +26,13 @@ export const config = {
   feePct: num('LAB_FEE_PCT', 2),
   sniperPct: num('LAB_SNIPER_PCT', 10),
   snipeSeconds: num('LAB_SNIPE_SECONDS', 60),
+  /** Coin logos: an image model drawing the Mesa Lab bot, Peek's icon as the reference. */
+  iconModel: env.LAB_ICON_MODEL ?? 'google/gemini-nano-banana-2.1',
+  iconReference:
+    env.LAB_ICON_REFERENCE ??
+    'https://api.mesa.cx/media/755eff9760ab6a76cef88fb515e860609c42abd2a0edeca1f109f489d35cc9d2.png',
+  /** Unix seconds: start a project right away once, if none started since (a manual nudge). */
+  kick: num('LAB_KICK', 0),
   /** Claim fees once they reach this much HYPE, at most once a day. */
   claimAt: num('LAB_CLAIM_AT', 0.01),
   /** Testing: no launches, posts or claims (LAB_DRY_RUN=1), canned model answers (LAB_MOCK=1). */
