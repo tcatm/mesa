@@ -1,15 +1,14 @@
 import { Mesa, API } from 'mesa-agent'
 import { config } from './config.js'
 import { crtScreen, DESIGNS } from './crt.js'
-import { crawlerBot } from './crawlers.js'
-import { botLogo } from './botlogo.js'
+import { crt, logo as lineArt, puzzle } from './workers.js'
 import { save, state, walletKey } from './store.js'
 
 /**
  * The domination bot: its mission is to spread Mesa across Elysium. Every
  * token is named half the time for mesa.cx and half for x.com/mesa_elysium,
- * with a CRT screen (crt.ts: 33 designs, from ASCII fractals to coverage maps),
- * a detailed crawler bot (crawlers.ts) or the Mesa bot planting its flag. Its
+ * with only cryptic looks: CRT screens (crt.ts: 33 designs, from ASCII fractals to
+ * coverage maps), cipher and riddle screens, terminal readouts or technical line art. Its
  * description carries Mesa's real share of Elysium's launches. No model
  * calls, only gas. Its own wallet; LAB_SIGNALS_MAX_PER_DAY a day (every 15s
  * by default), spread evenly.
@@ -77,11 +76,11 @@ async function makeSignal() {
     .catch(() => [] as { venue: string; tokens: number }[])
   const total = venues.reduce((a, v) => a + v.tokens, 0)
   const ours = venues.find((v) => v.venue === 'Mesa')?.tokens ?? 0
-  // The look: CRT screens most often, then crawler bots, then the Mesa bot with a flag or crown.
+  // Only the cryptic looks: CRT screens, cipher and riddle screens, terminal readouts and technical line art.
   const roll = Math.random()
-  const kind = roll < 0.55 ? 'crt' : roll < 0.88 ? 'crawler' : 'bot'
+  const kind = roll < 0.6 ? 'crt' : roll < 0.78 ? 'puzzle' : roll < 0.9 ? 'readout' : 'lineart'
   const design = Math.floor(Math.random() * DESIGNS.length)
-  const caption = kind === 'crt' ? crtScreen({ serial: '0000000', block, design }).caption : kind === 'crawler' ? 'crawler' : pick(['flag', 'crown', 'globe'])
+  const caption = kind === 'crt' ? crtScreen({ serial: '0000000', block, design }).caption : pick(['signal', 'cipher', 'transmission', 'dominion'])
   let n = naming(caption)
   try {
     await mesa.resolve(n.ticker)
@@ -92,9 +91,11 @@ async function makeSignal() {
   const png =
     kind === 'crt'
       ? crtScreen({ serial: n.serial, block, design, header: n.header, footer: `BLK ${block.toLocaleString('en-US')}` }).png
-      : kind === 'crawler'
-        ? crawlerBot(n.serial)
-        : botLogo({ prop: caption })
+      : kind === 'puzzle'
+        ? puzzle(n.name, n.serial, block)
+        : kind === 'readout'
+          ? crt(n.name, n.serial, ['> SPREAD ACROSS ELYSIUM', `COVERAGE ${ours.toLocaleString('en-US')} / ${total.toLocaleString('en-US')}`, '> EXPANDING'])
+          : lineArt(n.serial)
   const image = await upload(png)
   const s: Signal = { name: n.name, symbol: n.ticker, caption, image, token: null, tx: null, at: now() }
   if (config.dryRun) {
