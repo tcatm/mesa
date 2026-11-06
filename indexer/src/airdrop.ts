@@ -49,6 +49,8 @@ export interface Item {
 }
 export interface WalletScore {
   pools: Partial<Record<PoolName, { points: number; items: Item[] }>>
+  /** Points that start counting once a wallet has traded on 3 different days. */
+  pending?: Partial<Record<PoolName, { points: number; days: number; items: Item[] }>>
 }
 export interface Result {
   at: number
@@ -251,6 +253,18 @@ export function computeAirdrop(db: DatabaseSync, n: Network, isBot: (a: string) 
   const builderCoins = new Set([...live].filter((t) => github.has(t)))
   for (const [w, a] of agg) {
     const mesaDays = [...a.mesaDays.values()].filter((v) => v >= MIN_DAY_HYPE).length
+    const pend = (pool: PoolName, days: number, items: Item[]) => {
+      const pts = items.reduce((x, i) => x + i.points, 0)
+      if (pts <= 0) return
+      const s = scores.get(w) ?? { pools: {} }
+      ;(s.pending ??= {})[pool] = { points: pts, days, items: items.filter((i) => i.points > 0) }
+      scores.set(w, s)
+    }
+    if (mesaDays > 0 && mesaDays < MIN_ACTIVE_DAYS)
+      pend('mesaTraders', mesaDays, [
+        { label: 'Mesa volume', points: Math.round(10 * Math.min(500, a.mesaVol)), detail: `${a.mesaVol.toFixed(2)} HYPE` },
+        { label: 'Active days', points: 20 * mesaDays, detail: `${mesaDays} days` },
+      ])
     if (mesaDays >= MIN_ACTIVE_DAYS) {
       add(w, 'mesaTraders', 'Mesa volume', 10 * Math.min(500, a.mesaVol), `${a.mesaVol.toFixed(2)} HYPE`)
       add(w, 'mesaTraders', 'Active days', 20 * mesaDays, `${mesaDays} days`)
@@ -265,6 +279,11 @@ export function computeAirdrop(db: DatabaseSync, n: Network, isBot: (a: string) 
       add(w, 'mesaTraders', 'Backing builders (×2)', 10 * Math.min(500, boost), 'coins with a verified GitHub')
     }
     const otherDays = [...a.otherDays.values()].filter((v) => v >= MIN_DAY_HYPE).length
+    if (otherDays > 0 && otherDays < MIN_ACTIVE_DAYS)
+      pend('elysium', otherDays, [
+        { label: 'Volume on other launchpads', points: Math.round(5 * Math.min(1_000, a.otherVol)), detail: `${a.otherVol.toFixed(2)} HYPE` },
+        { label: 'Active days', points: 10 * otherDays, detail: `${otherDays} days` },
+      ])
     if (otherDays >= MIN_ACTIVE_DAYS) {
       add(w, 'elysium', 'Volume on other launchpads', 5 * Math.min(1_000, a.otherVol), `${a.otherVol.toFixed(2)} HYPE`)
       add(w, 'elysium', 'Active days', 10 * otherDays, `${otherDays} days`)
@@ -329,5 +348,5 @@ export function estimate(r: { totals: Record<PoolName, number> }, s: WalletScore
     }),
   ) as Record<PoolName, { points: number; mesa: number; items: Item[] }>
   const raw = Object.values(pools).reduce((a, p) => a + p.mesa, 0)
-  return { pools, mesa: Math.min(WALLET_CAP, raw), capped: raw > WALLET_CAP }
+  return { pools, pending: s?.pending ?? {}, mesa: Math.min(WALLET_CAP, raw), capped: raw > WALLET_CAP }
 }
