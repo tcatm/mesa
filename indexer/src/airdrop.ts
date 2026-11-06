@@ -23,6 +23,8 @@ export const POOLS = {
 export type PoolName = keyof typeof POOLS
 export const TOTAL = Object.values(POOLS).reduce((a, b) => a + b, 0)
 const WALLET_CAP = 1_000_000
+/** Points stop counting at the end of Nov 18, 2026 (UTC). */
+export const SEASON_END = Number(process.env.AIRDROP_END ?? 1795046400)
 
 /** Wallets that never earn: the team, dev-linked wallets, both Mesa Lab agents, the drop wallet. */
 const EXCLUDED = [
@@ -151,10 +153,10 @@ export function computeAirdrop(db: DatabaseSync, n: Network, isBot: (a: string) 
   let prev: Tr | null = null
   const stmt = db.prepare(
     `SELECT lower(trader) trader, lower(token) token, pool, side, timestamp ts, value_hype v FROM trades
-      WHERE kind = 'trade' AND trader IS NOT NULL AND value_hype IS NOT NULL AND value_hype > 0
+      WHERE kind = 'trade' AND trader IS NOT NULL AND value_hype IS NOT NULL AND value_hype > 0 AND timestamp < ?
       ORDER BY trader, token, timestamp`,
   )
-  const rows = stmt.all() as unknown as Tr[]
+  const rows = stmt.all(SEASON_END) as unknown as Tr[]
   // Count a trade only once we know the next one isn't its round trip.
   const pending: Tr[] = []
   const flush = (t: Tr) => {
@@ -201,7 +203,7 @@ export function computeAirdrop(db: DatabaseSync, n: Network, isBot: (a: string) 
   if (pending.length) flush(pending.pop()!)
 
   // ------------------------------------------------------------------ live coins and qualifying holders
-  const now = Math.floor(Date.now() / 1000)
+  const now = Math.min(SEASON_END, Math.floor(Date.now() / 1000))
   const holderRows = all<{ token: string; holder: string }>(
     `SELECT lower(token) token, lower(holder) holder FROM balances WHERE balance > 0 AND token IN (${launches.map(() => '?').join(',') || "''"})`,
     ...launches.map((l) => l.token),
@@ -240,7 +242,7 @@ export function computeAirdrop(db: DatabaseSync, n: Network, isBot: (a: string) 
   )
   const github = new Set(ghRows.filter((g) => g.created_at !== null && g.verified_at - g.created_at >= 90 * DAY).map((g) => g.token))
   const commitWeeks = new Map(ghRows.map((g) => [g.token, JSON.parse(g.weeks ?? '[]') as number[]]))
-  const posts = all<{ token: string; author: string; time: number }>('SELECT lower(token) token, lower(author) author, time FROM build_updates')
+  const posts = all<{ token: string; author: string; time: number }>('SELECT lower(token) token, lower(author) author, time FROM build_updates WHERE time < ?', SEASON_END)
   const meta = new Map(all<{ token: string; description: string | null }>('SELECT lower(token) token, description FROM token_meta').map((m) => [m.token, m.description ?? '']))
   const ideaSymbols = new Set(
     launches
@@ -360,6 +362,7 @@ export function computeAirdrop(db: DatabaseSync, n: Network, isBot: (a: string) 
     }
     for (const r of db.prepare('SELECT lower(src) src, lower(dst) dst, amount, block FROM transfers WHERE lower(token) = ? ORDER BY block, log_index').all(mesaToken) as unknown as { src: string; dst: string; amount: number; block: number }[]) {
       const t = timeOf(r.block)
+      if (t >= SEASON_END) break
       move(r.src, -r.amount, t)
       move(r.dst, r.amount, t)
     }
@@ -370,8 +373,8 @@ export function computeAirdrop(db: DatabaseSync, n: Network, isBot: (a: string) 
     }
     const buybackTx = new Set(all<{ tx: string }>("SELECT tx FROM trades WHERE lower(token) = ? AND kind = 'buyback'", mesaToken).map((r) => r.tx))
     const burns = new Map<string, number>()
-    for (const r of all<{ tx: string; src: string; amount: number }>('SELECT tx, lower(src) src, amount FROM transfers WHERE lower(token) = ? AND lower(dst) = ? AND amount >= 1', mesaToken, DEAD))
-      if (!buybackTx.has(r.tx)) burns.set(r.src, (burns.get(r.src) ?? 0) + r.amount)
+    for (const r of all<{ tx: string; src: string; amount: number; block: number }>('SELECT tx, lower(src) src, amount, block FROM transfers WHERE lower(token) = ? AND lower(dst) = ? AND amount >= 1', mesaToken, DEAD))
+      if (!buybackTx.has(r.tx) && timeOf(r.block) < SEASON_END) burns.set(r.src, (burns.get(r.src) ?? 0) + r.amount)
     for (const [w, amt] of burns) if (!skip(w)) add(w, 'holders', 'Burned $MESA by hand', (5 * amt) / 1_000, `${Math.round(amt).toLocaleString('en-US')} MESA`)
   }
 

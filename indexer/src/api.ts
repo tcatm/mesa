@@ -11,7 +11,7 @@ import { UpdateError, listUpdates, migrateUpdates, postUpdate } from './updates.
 import { PX, tableBuilder } from './table.js'
 import { startMev } from './mev.js'
 import { getProject, migrateProjects, saveProfile, verifyGithub } from './projects.js'
-import { POOLS, TOTAL, estimate, type PoolName, type WalletScore } from './airdrop.js'
+import { POOLS, SEASON_END, TOTAL, estimate, type PoolName, type WalletScore } from './airdrop.js'
 import { SNAPSHOT, startOg } from './og.js'
 import { startGithub } from './github.js'
 
@@ -550,7 +550,7 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
       if (parts[0] === 'stats') return json(stats())
       if (parts[0] === 'mesa' && parts.length === 1) return json(mesaBurns())
       if (parts[0] === 'airdrop' && parts.length === 1)
-        return json({ total: TOTAL, pools: POOLS, ready: !!drop, at: drop?.at ?? null, totals: drop?.totals ?? null, wallets: drop?.wallets ?? 0, liveCoins: drop?.live.length ?? 0, snapshot: SNAPSHOT, reserve: reserve() })
+        return json({ total: TOTAL, pools: POOLS, ready: !!drop, at: drop?.at ?? null, totals: drop?.totals ?? null, wallets: drop?.wallets ?? 0, liveCoins: drop?.live.length ?? 0, snapshot: SNAPSHOT, end: SEASON_END, reserve: reserve() })
       if (parts[0] === 'airdrop' && parts.length === 2) {
         const w = parts[1]!.toLowerCase()
         if (!/^0x[0-9a-f]{40}$/.test(w)) return json({ error: 'not an address' }, 400)
