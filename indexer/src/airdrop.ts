@@ -36,6 +36,7 @@ const EXCLUDED = [
   '0xe6db85515b798f33e3e56663ab22cd951917d87e', // Mesa Lab builder agent
   '0xca1d5ee87992ba1e6b8f67789e316f36274327f8', // Mesa Lab idea agent
   '0xc17add0aa46fbef34657a29d99f2bc31e547b54a', // Mesa Lab attention token deployer
+  '0x7462f055183feec66496f96cd7df52d557b1215d', // Mesa Lab worker deployer
   ...(process.env.AIRDROP_EXCLUDE ?? '').split(',').map((a) => a.trim().toLowerCase()).filter(Boolean),
 ]
 
