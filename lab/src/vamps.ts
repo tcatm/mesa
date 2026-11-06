@@ -1,9 +1,9 @@
-import { readFileSync } from 'node:fs'
 import { Resvg } from '@resvg/resvg-js'
 import { Mesa } from 'mesa-agent'
 import { config } from './config.js'
 import { chat, parseJson } from './llm.js'
 import { BLOCK, trending } from './news.js'
+import { memeLogo } from './memelogo.js'
 import { save, spentToday, state, walletKey, type NewsCoin } from './store.js'
 
 /**
@@ -123,75 +123,8 @@ async function picture(searches: string[]): Promise<{ url: string; credit: strin
   return null
 }
 
-// ---------------------------------------------------------------- meme logos: 3D emoji
-/** Microsoft's Fluent Emoji (3D), MIT licensed: lab/emoji.json lists each with its keywords. */
-interface Emoji {
-  n: string
-  p: string
-  k: string[]
-  g: string
-}
-const EMOJI: Emoji[] = (() => {
-  try {
-    return JSON.parse(readFileSync(new URL('../emoji.json', import.meta.url), 'utf8')) as Emoji[]
-  } catch {
-    return []
-  }
-})()
-const FAVOURED = new Set(['Animals & Nature', 'Food & Drink', 'Objects', 'Smileys & Emotion', 'Activities', 'Travel & Places'])
-
-function matchEmoji(terms: string[]): Emoji | null {
-  let best: { e: Emoji; s: number } | null = null
-  terms.forEach((raw, rank) => {
-    const t = raw.toLowerCase().trim()
-    if (!t) return
-    const weight = 3 - Math.min(rank, 2) // earlier terms count more
-    for (const e of EMOJI) {
-      let s = 0
-      if (e.n === t) s = 10
-      else if (e.n.split(/\s+/)[0] === t) s = 8
-      else if (e.n.split(/\s+/).includes(t)) s = 7
-      else if (e.k.includes(t)) s = 6
-      else if (e.n.includes(t)) s = 4
-      else if (e.k.some((k) => k.includes(t))) s = 2
-      if (!s) continue
-      s = s * weight + (FAVOURED.has(e.g) ? 1 : 0)
-      if (!best || s > best.s) best = { e, s }
-    }
-  })
-  return best ? (best as { e: Emoji }).e : null
-}
-
-const BACKDROPS = [
-  ['#FFE66D', '#FF9F1C'],
-  ['#9BF6FF', '#4D96FF'],
-  ['#CAFFBF', '#3BB273'],
-  ['#FFC6FF', '#C77DFF'],
-  ['#FFADAD', '#FF5D8F'],
-  ['#B6FFEE', '#2EC4B6'],
-  ['#FDFFB6', '#F9C80E'],
-  ['#E0C3FC', '#8EC5FC'],
-  ['#FFD6A5', '#FF7B54'],
-]
-
-/** A 3D emoji, big and centred on a bright gradient, uploaded to Mesa's media store. */
-async function emojiLogo(e: Emoji): Promise<string | null> {
-  const r = await fetch(`https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/${e.p.split('/').map(encodeURIComponent).join('/')}`, {
-    headers: { 'user-agent': UA },
-    signal: AbortSignal.timeout(20_000),
-  })
-  if (!r.ok) return null
-  const img = Buffer.from(await r.arrayBuffer())
-  const [a, b] = BACKDROPS[Math.floor(Math.random() * BACKDROPS.length)]!
-  const tilt = Math.round((Math.random() - 0.5) * 16)
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-    <defs><radialGradient id="g" cx="0.5" cy="0.38" r="0.75"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></radialGradient>
-    <radialGradient id="s" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#000" stop-opacity=".28"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient></defs>
-    <rect width="512" height="512" fill="url(#g)"/>
-    <ellipse cx="256" cy="430" rx="150" ry="26" fill="url(#s)"/>
-    <g transform="rotate(${tilt} 256 256)"><image href="data:image/png;base64,${img.toString('base64')}" x="66" y="56" width="380" height="380"/></g>
-  </svg>`
-  const png = Buffer.from(new Resvg(svg, { fitTo: { mode: 'width', value: 384 } }).render().asPng())
+/** Upload a finished PNG to Mesa's media store. */
+async function upload(png: Buffer): Promise<string | null> {
   const up = await fetch(config.uploadUrl, { method: 'POST', headers: { 'content-type': 'image/png' }, body: new Uint8Array(png) })
   const body = (await up.json().catch(() => ({}))) as { url?: string }
   return up.ok && body.url ? body.url : null
@@ -220,16 +153,15 @@ async function makeVamp() {
     if (check.ok !== true) continue
     const words = (x: unknown) => (Array.isArray(x) ? x : []).map((v) => String(v).trim().slice(0, 40)).filter(Boolean)
     const searches = words(check.searches)
-    const em = matchEmoji([...words(check.emoji), ...t.name.toLowerCase().split(/[^a-z]+/)])
-    const memeLogo = async () => {
-      if (!em) return null
-      const url = await emojiLogo(em).catch(() => null)
-      return url ? { url, credit: `${em.n} from Fluent Emoji by Microsoft (MIT)` } : null
+    const meme = async () => {
+      const l = await memeLogo([...words(check.emoji), ...t.name.toLowerCase().split(/[^a-z]+/)], t.symbol).catch(() => null)
+      const url = l ? await upload(l.png).catch(() => null) : null
+      return l && url ? { url, credit: l.credit } : null
     }
     const pic =
       check.style === 'serious'
-        ? ((await picture(searches)) ?? (await memeLogo()))
-        : ((await memeLogo()) ?? (await picture([...searches, 'cute animal'])))
+        ? ((await picture(searches)) ?? (await meme()))
+        : ((await meme()) ?? (await picture([...searches, 'cute animal'])))
     const blurb = `Attention token: $${t.symbol} is trending on ${t.chain}.`
     const coin: NewsCoin = {
       kind: 'vamp',
