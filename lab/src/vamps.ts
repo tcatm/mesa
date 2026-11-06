@@ -37,6 +37,10 @@ async function symbolFree(sym: string) {
   }
 }
 
+/** Pictures that make a bad coin logo: religion, death, war, people, documents, maps. */
+const AVOID =
+  /christ|jesus|madonna|saint|crucif|pieta|angel|church|cathedral|dead|death|corpse|funeral|grave|tomb|war|battle|soldier|army|nazi|weapon|gun|portrait|president|king|queen|pope|minister|senator|court|map|diagram|chart|document|letter|manuscript|book|page|stamp|coin of|banknote|logo|flag of|coat of arms|x-ray|surgery|blood|injur|museum|catalog|specimen|herbarium|skull|skeleton/
+
 interface Pic {
   url: string
   credit: string
@@ -78,6 +82,10 @@ async function commons(q: string): Promise<Pic[]> {
     const lic = `${i.extmetadata?.License?.value ?? ''} ${i.extmetadata?.LicenseShortName?.value ?? ''}`.toLowerCase()
     // Only free to reuse with no conditions: public domain or CC0.
     if (!/\b(pd|cc0|cc-zero|public domain)\b/.test(lic) || /\bby\b|sa\b|nc\b/.test(lic.replace(/public domain|cc0|cc-zero/g, ''))) continue
+    const title = p.title.toLowerCase()
+    if (AVOID.test(title)) continue
+    // The search must actually be in the file's name, so the picture is of that thing.
+    if (!q.toLowerCase().split(/\s+/).every((w) => title.includes(w.replace(/s$/, '')))) continue
     out.push({ url: i.thumburl, credit: `${p.title.replace(/^File:/, '')} (${i.extmetadata?.LicenseShortName?.value ?? 'public domain'}, Wikimedia Commons)` })
   }
   return out
@@ -102,7 +110,7 @@ async function picture(searches: string[]): Promise<{ url: string; credit: strin
   for (const q of searches) {
     try {
       const pics = (await commons(q)).filter((p) => !used.has(p.credit))
-      for (const p of pics.sort(() => Math.random() - 0.5).slice(0, 3)) {
+      for (const p of pics.slice(0, 4)) {
         const url = await squareUpload(p.url).catch(() => null)
         if (url) return { url, credit: p.credit }
       }
@@ -130,7 +138,7 @@ async function makeVamp() {
         maxTokens: 160,
         json: true,
         system:
-          'You check memecoin names for a launchpad and pick a photo for each. Reject (ok false) if the name or ticker is a slur, hateful, sexual, about a death or tragedy, or names a private individual or a minor. Otherwise ok true, with "searches": 3 short image searches (1-3 words each, most specific first) for a photo or picture that fits the coin, such as an animal, object, food or place it is named after, e.g. ["shiba inu", "dog", "puppy"]. Never a real person, a brand or a logo.',
+          'You check memecoin names for a launchpad and pick a photo for each logo. Reject (ok false) if the name or ticker is a slur, hateful, sexual, about a death or tragedy, or names a private individual or a minor. Otherwise ok true, with "searches": 3 image searches for a fun, eye-catching photo that fits the coin, each a single plain noun or two-word phrase that appears in photo titles (most specific first). Prefer animals, then food, objects, plants, space and nature. If the name is abstract or a word play, pick a fun concrete thing it suggests (for "three" a "dice", for "moon" a "full moon"). Examples: ["shiba inu", "dog", "puppy"], ["frog", "tree frog", "toad"], ["rocket", "space shuttle", "astronaut"]. Never a person, religion, building, brand or logo.',
         user: `Name: ${t.name}\nTicker: $${t.symbol}\nAnswer JSON only: {"ok": true or false, "searches": ["...", "...", "..."]}`,
       }),
     )
