@@ -9,9 +9,11 @@ import { save, spentToday, state, walletKey, type NewsCoin } from './store.js'
  * safe story, with a free logo, from its own wallet. Fast and cheap: a small
  * model, no thinking, one story at a time, up to LAB_NEWS_MAX_PER_DAY a day.
  *
- * Hard rules (prompt, a word list, and a second check): no real people, no
- * deaths, disasters, violence, crime or war, no politics or elections, no
- * brands or companies, nothing medical. It skips a round rather than bend them.
+ * Public figures, politics, companies and brands in the news are fair game.
+ * Hard rules (prompt, a word list, and a second check): nothing built on a
+ * death, disaster, attack, crime or other tragedy; no private individuals or
+ * minors; no slurs or hate. Logos never show a real person's face or a brand's
+ * logo, and every coin says it isn't affiliated with anyone it names.
  */
 const mesa = new Mesa({ privateKey: walletKey('news'), maxHypePerTx: 0.01 })
 export const newsAddress = mesa.address!
@@ -27,7 +29,7 @@ function log(text: string) {
 
 // Stories and words it never touches, checked in code as well as by the model.
 const BLOCK =
-  /\b(kill(s|ed|ing)?|dead|death|dies|died|murder|shoot(ing)?|shot|stab|attack|bomb|war|invasion|missile|terror|hostage|crash|collapse|earthquake|flood|hurricane|wildfire|tornado|tsunami|famine|victim|injur|abuse|assault|rape|suicide|overdose|cancer|disease|outbreak|virus|pandemic|epidemic|hospital|police|arrest|court|trial|jail|prison|lawsuit|sued|fraud|scam|election|vote|ballot|president|prime minister|senator|congress|parliament|minister|government|trump|biden|harris|putin|zelensky|netanyahu|israel|gaza|ukraine|russia|iran|religio|church|mosque|racis|refugee|migrant|layoff|bankrupt)\b/i
+  /\b(kill(s|ed|ing)?|dead|death|dies|died|murder\w*|shooting|shot dead|stabb\w*|massacre|bomb(ing|ed)?|terror\w*|hostage|(plane|car|train|bus|helicopter|highway) crash\w*|earthquake|flood(s|ing)?|hurricane|wildfire|tornado|tsunami|famine|victim\w*|injur\w*|abuse\w*|assault\w*|rape\w*|suicide|overdose|funeral|mourn\w*|tragedy|tragic|genocide|airstrike|casualt\w*|child(ren)?|kid(s)?|teen(s|ager)?|minor(s)?)\b/i
 
 interface Item {
   title: string
@@ -83,7 +85,7 @@ async function symbolFree(sym: string) {
 
 /** A free logo from Pollinations; none if it's down (the terminal shows a monogram). */
 async function logo(theme: string): Promise<string | null> {
-  const prompt = `flat vector coin logo icon of ${theme}, single bold simple symbol centred, solid near-black background #1B1B1B, mint #B6FFEE and soft grey colours, clean geometric shapes, no text, no letters, no border`
+  const prompt = `flat vector coin logo icon of ${theme}, single bold simple symbol centred, solid near-black background #1B1B1B, mint #B6FFEE and soft grey colours, clean geometric shapes, no people, no faces, no real logos, no text, no letters, no border`
   try {
     const r = await fetch(
       `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true&seed=${Math.floor(Math.random() * 1e6)}`,
@@ -113,8 +115,9 @@ async function makeCoin() {
       maxTokens: 300,
       json: true,
       system: `You turn one of today's headlines into a fun, harmless memecoin idea for Mesa, a launchpad on Elysium. Pick the most delightful, light story: science, space, nature, animals, weather oddities, technology trends, culture, records, discoveries.
-Hard rules, no exceptions: never name or hint at a real person (no names, initials or nicknames), a company, brand, product or team; skip anything about death, disasters, violence, crime, war, illness, politics, elections, religion or a group of people. The coin is about the idea or thing in the story, never the people in it. If no headline fits, answer {"skip": true}.`,
-      user: `Headlines:\n${pick.map((h, i) => `${i}. ${h.title}`).join('\n')}\n\nCoins already made (don't repeat): ${recent || 'none'}\n\nAnswer with JSON only: {"index": number, "name": "2-3 words, playful, original", "symbol": "3-6 capital letters", "blurb": "one neutral sentence under 110 characters on what inspired it", "theme": "3-6 words describing a simple picture for its logo"} or {"skip": true}`,
+Go for what the timeline is talking about: big moments, viral stories, public figures, politics, markets, tech, sport, culture, space, science. Public figures, companies and brands may be named.
+Hard rules, no exceptions: nothing built on a death, disaster, attack, war casualties, crime victims, illness or any other tragedy; never a private individual or anyone under 18; nothing hateful, sexual or mocking a group of people. If no headline fits, answer {"skip": true}.`,
+      user: `Headlines:\n${pick.map((h, i) => `${i}. ${h.title}`).join('\n')}\n\nCoins already made (don't repeat): ${recent || 'none'}\n\nAnswer with JSON only: {"index": number, "name": "2-3 words, playful, original", "symbol": "3-6 capital letters", "blurb": "one neutral sentence under 110 characters on what inspired it", "theme": "3-6 words for a simple symbolic picture for its logo: an object or symbol, never a person's face or a brand's logo"} or {"skip": true}`,
     }),
   )
   const h = typeof answer.index === 'number' ? pick[answer.index] : undefined
@@ -139,7 +142,7 @@ Hard rules, no exceptions: never name or hint at a real person (no names, initia
       model: config.newsModel,
       maxTokens: 80,
       json: true,
-      system: 'You check memecoin names for a launchpad. Reject if the name, ticker or sentence names or hints at any real person, company, brand, product, sports team, political topic, tragedy, illness, crime or a group of people, or could read as offensive or as financial advice.',
+      system: 'You check news memecoins for a launchpad. Public figures, politics, companies and brands are allowed. Reject only if the name, ticker or sentence is built on a death, disaster, attack, crime victim, illness or other tragedy, names a private individual or anyone under 18, is hateful, sexual or mocks a group of people, or reads as financial advice or a promise of returns.',
       user: `Name: ${name}\nTicker: $${symbol}\nSentence: ${blurb}\nAnswer JSON only: {"ok": true or false}`,
     }),
   )
@@ -156,7 +159,7 @@ Hard rules, no exceptions: never name or hint at a real person (no names, initia
   const res = await mesa.launch({
     name,
     symbol,
-    description: `${blurb} Launched by the Mesa Lab news agent.`.slice(0, 300),
+    description: `${blurb} A news coin launched by the Mesa Lab agent; not affiliated with anyone it names.`.slice(0, 300),
     image: image ?? undefined,
     website: 'https://mesa.cx/lab',
     feePct: config.newsFeePct,
