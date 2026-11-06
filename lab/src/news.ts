@@ -124,7 +124,7 @@ interface Trend {
 }
 
 let trendCache: { at: number; items: Trend[] } = { at: 0, items: [] }
-const CHAINS: Record<string, string> = { solana: 'Solana', base: 'Base', ethereum: 'Ethereum', bsc: 'BNB Chain', arbitrum: 'Arbitrum', sui: 'Sui', tron: 'Tron', ton: 'TON', avalanche: 'Avalanche', polygon: 'Polygon', abstract: 'Abstract', hyperliquid: 'Hyperliquid' }
+const CHAINS: Record<string, string> = { solana: 'Solana', base: 'Base', ethereum: 'Ethereum', bsc: 'BNB Chain', arbitrum: 'Arbitrum', sui: 'Sui', tron: 'Tron', ton: 'TON', avalanche: 'Avalanche', polygon: 'Polygon', abstract: 'Abstract', hyperliquid: 'Hyperliquid', robinhood: 'Robinhood Chain', monad: 'Monad', berachain: 'Berachain', sonic: 'Sonic', unichain: 'Unichain', linea: 'Linea', blast: 'Blast', optimism: 'Optimism', pulsechain: 'PulseChain' }
 
 /** Tokens popping on other chains right now: DexScreener's top boosts and newest profiles, with their real names. */
 async function trending(): Promise<Trend[]> {
