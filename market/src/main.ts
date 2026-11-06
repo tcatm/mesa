@@ -336,7 +336,10 @@ createServer((req, res) => {
   }
   if (url.pathname === '/upload') {
     if (req.method !== 'POST') return send(res, 405, { error: 'POST only' })
-    upload(req, ip).then(
+    // Mesa's own services (the lab's agents) post from inside the server's network, without
+    // going through the proxy; they skip the per-address hourly limit (the storage cap still applies).
+    const internal = !req.headers['x-forwarded-for'] && /^(::ffff:)?(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.)/.test(req.socket.remoteAddress ?? '')
+    upload(req, internal ? '' : ip).then(
       (r) => send(res, 200, r),
       (e: unknown) => send(res, e instanceof MediaError ? e.status : 500, { error: e instanceof MediaError ? e.message : 'upload failed' }),
     )

@@ -44,6 +44,7 @@ let total = readdirSync(MEDIA_DIR).reduce((s, f) => s + (FILE.test(f) ? statSync
 
 const uploads = new Map<string, number[]>()
 function underLimit(ip: string): boolean {
+  if (ip === '') return true // internal
   const now = Date.now()
   const recent = (uploads.get(ip) ?? []).filter((t) => now - t < 3_600_000)
   if (recent.length >= PER_IP_PER_HOUR) return false

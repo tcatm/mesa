@@ -46,15 +46,15 @@ function bot(accent: string, look: number) {
 }
 
 /**
- * The logo as a 512px PNG. `art` is the painted scene (any size, square) or null
+ * The logo as a PNG, 320px by default (small files: these launch every minute). `art` is the painted scene (any size, square) or null
  * for a plain backdrop; `crop` drops the free service's corner watermark.
  */
-export function botLogo(o: { art: Buffer | null; mime?: string; accent: string; look?: number; crop?: boolean }): Buffer {
+export function botLogo(o: { art: Buffer | null; mime?: string; accent: string; look?: number; crop?: boolean; size?: number }): Buffer {
   const mime = /png|webp/.exec(o.mime ?? '')?.[0] ?? 'jpeg'
   const vb = o.crop ? '31 31 450 450' : '0 0 512 512'
   const art = o.art
     ? `<svg x="0" y="0" width="512" height="512" viewBox="${vb}" preserveAspectRatio="xMidYMid slice"><image href="data:image/${mime};base64,${o.art.toString('base64')}" width="512" height="512"/></svg>`
     : `<radialGradient id="bg" cx="0.5" cy="0.35" r="0.7"><stop offset="0" stop-color="${o.accent}" stop-opacity="0.35"/><stop offset="1" stop-color="${o.accent}" stop-opacity="0"/></radialGradient><rect width="512" height="512" fill="url(#bg)"/>`
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" fill="#1B1B1B"/>${art}${bot(o.accent, o.look ?? 0)}</svg>`
-  return Buffer.from(new Resvg(svg, { fitTo: { mode: 'width', value: 512 } }).render().asPng())
+  return Buffer.from(new Resvg(svg, { fitTo: { mode: 'width', value: o.size ?? 320 } }).render().asPng())
 }

@@ -130,7 +130,9 @@ async function scene(subject: string, palette: string): Promise<{ img: Buffer; m
 async function logo(subject: string, palette: string): Promise<string | null> {
   const art = await scene(subject, palette)
   const png = botLogo({ art: art?.img ?? null, mime: art?.mime, crop: !!art, accent: pick(ACCENTS), look: pick([-1, 0, 0, 1]) })
-  return upload(png)
+  const url = await upload(png)
+  if (!url) log('The logo upload failed; launching without one')
+  return url
 }
 
 interface Answer {
