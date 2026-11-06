@@ -31,7 +31,7 @@ function log(text: string) {
 }
 
 // Stories and words it never touches, checked in code as well as by the model.
-const BLOCK =
+export const BLOCK =
   /\b(kill(s|ed|ing)?|dead|death|dies|died|murder\w*|shooting|shot dead|stabb\w*|massacre|bomb(ing|ed)?|terror\w*|hostage|(plane|car|train|bus|helicopter|highway) crash\w*|earthquake|flood(s|ing)?|hurricane|wildfire|tornado|tsunami|famine|victim\w*|injur\w*|abuse\w*|assault\w*|rape\w*|suicide|overdose|funeral|mourn\w*|tragedy|tragic|genocide|airstrike|casualt\w*|child(ren)?|kid(s)?|teen(s|ager)?|minor(s)?)\b/i
 
 interface Item {
@@ -96,7 +96,7 @@ export interface LogoArt {
 const STYLES = ['bold flat vector', 'glossy 3D render', 'retro pixel art', 'playful cartoon', 'risograph print', 'neon line art', 'soft watercolour', 'low-poly', 'paper cut-out', 'vintage badge']
 
 /** A free logo from Pollinations, retried with a fresh seed; none if it keeps failing (the terminal shows a monogram). */
-async function logo(art: LogoArt): Promise<string | null> {
+export async function logo(art: LogoArt): Promise<string | null> {
   const style = STYLES.includes(art.style) ? art.style : STYLES[Math.floor(Math.random() * STYLES.length)]!
   const prompt = `${style} illustration of ${art.subject}, colour palette: ${art.palette}, one clear subject centred and filling most of a square coin icon, simple background, an original design that is not any existing cartoon character, meme figure, mascot or photograph, no people, no faces, no real logos, no text, no letters, no border`
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -132,7 +132,7 @@ function cropCorner(img: Buffer, type: string): Buffer {
 
 // ---------------------------------------------------------------- vamps
 
-interface Trend {
+export interface Trend {
   name: string
   symbol: string
   chain: string
@@ -143,7 +143,7 @@ let trendCache: { at: number; items: Trend[] } = { at: 0, items: [] }
 const CHAINS: Record<string, string> = { solana: 'Solana', base: 'Base', ethereum: 'Ethereum', bsc: 'BNB Chain', arbitrum: 'Arbitrum', sui: 'Sui', tron: 'Tron', ton: 'TON', avalanche: 'Avalanche', polygon: 'Polygon', abstract: 'Abstract', hyperliquid: 'Hyperliquid', robinhood: 'Robinhood Chain', monad: 'Monad', berachain: 'Berachain', sonic: 'Sonic', unichain: 'Unichain', linea: 'Linea', blast: 'Blast', optimism: 'Optimism', pulsechain: 'PulseChain' }
 
 /** Tokens popping on other chains right now: DexScreener's top boosts and newest profiles, with their real names. */
-async function trending(): Promise<Trend[]> {
+export async function trending(): Promise<Trend[]> {
   if (Date.now() - trendCache.at < 10 * 60_000 && trendCache.items.length) return trendCache.items
   const get = async (u: string) => {
     const r = await fetch(u, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(15_000) })

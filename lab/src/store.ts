@@ -41,6 +41,11 @@ export interface State {
   /** The idea agent (ideas.ts): open project ideas, each with a coin, for anyone to fork and build. */
   ideas?: IdeaCoin[]
   ideasLog?: { at: number; text: string }[]
+  /** The vamp agent (vamps.ts): Elysium versions of tokens trending on other chains. */
+  vamps?: NewsCoin[]
+  vampLog?: { at: number; text: string }[]
+  vampLastClaimAt?: number
+  vampClaimedHype?: number
   /** One-off top-ups already sent (config.fundIdeas ids). */
   funded?: string[]
 }

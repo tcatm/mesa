@@ -53,6 +53,9 @@ export const config = {
   /** The idea agent: an open, forkable project idea with a coin and a bot logo (shares the news agent's wallet and budget). */
   ideasEnabled: env.LAB_IDEAS_ENABLED === '1',
   ideasMaxPerDay: num('LAB_IDEAS_MAX_PER_DAY', 32),
+  /** The vamp agent: an Elysium version of a token trending on another chain, with its own logo. */
+  vampsEnabled: env.LAB_VAMPS_ENABLED === '1',
+  vampsMaxPerDay: num('LAB_VAMPS_MAX_PER_DAY', 1440),
   /** A one-off top-up from the builder's wallet to the idea agent's: "<HYPE>:<id>", sent once per id. */
   fundIdeas: env.LAB_FUND_IDEAS ?? '',
   /** Testing: no launches, posts or claims (LAB_DRY_RUN=1), canned model answers (LAB_MOCK=1). */
