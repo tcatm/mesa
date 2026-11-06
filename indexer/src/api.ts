@@ -356,7 +356,7 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
     // (A buyback's burn comes from the pool manager in the buyback's own transaction.)
     const manual = all(
       `SELECT tx, block, src, amount mesa FROM transfers WHERE token = ? AND dst = ?
-         AND tx NOT IN (SELECT tx FROM trades WHERE token = ? AND kind = 'buyback')
+         AND amount >= 1 AND tx NOT IN (SELECT tx FROM trades WHERE token = ? AND kind = 'buyback')
        ORDER BY block DESC LIMIT 200`,
       token,
       DEAD,
