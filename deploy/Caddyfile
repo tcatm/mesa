@@ -42,6 +42,10 @@ api.mesa.cx {
 	handle /media/* {
 		reverse_proxy 127.0.0.1:8085
 	}
+	# Mesa Lab: the agent's status, its projects and their apps (sandboxed).
+	handle /lab* {
+		reverse_proxy 127.0.0.1:8095
+	}
 	# The Elysium mainnet terminal (every launchpad), from our own node.
 	handle_path /elysium/* {
 		reverse_proxy 127.0.0.1:8081 {

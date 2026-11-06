@@ -136,6 +136,31 @@ services:
       # Images uploaded at launch: permanent, addressed by their hash.
       - /opt/mesa/data/media:/media
 
+  # Mesa Lab: an agent that builds small web tools on its own, publishes them
+  # at api.mesa.cx/lab/<slug>/ in a sandbox and launches a token for each
+  # (lab/src/main.ts). Its wallet key is made on first start and stays in
+  # /opt/mesa/data/lab. Pause it by creating /opt/mesa/data/lab/STOP.
+  lab:
+    build:
+      context: ..
+      dockerfile: lab/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8095:8095"
+    environment:
+      LAB_ENABLED: "1"
+      LAB_DATA: /data
+      PORT: "8095"
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      LAB_UPLOAD_URL: http://market:8085/upload
+      LAB_MAX_PER_DAY: "2"
+      LAB_GAP_HOURS: "8"
+      LAB_BUDGET_USD: "3"
+    volumes:
+      - /opt/mesa/data/lab:/data
+    depends_on:
+      - market
+
   caddy:
     image: caddy:2.8.4
     restart: unless-stopped

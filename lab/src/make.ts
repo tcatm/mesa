@@ -1,0 +1,123 @@
+import { Resvg } from '@resvg/resvg-js'
+import { config } from './config.js'
+import { chat, parseJson } from './llm.js'
+
+/**
+ * Making one project: an idea, the app (one self-contained HTML file), an icon
+ * and a review. Nothing here touches the chain; main.ts launches what passes.
+ */
+export interface Idea {
+  name: string
+  symbol: string
+  slug: string
+  tagline: string
+  about: string
+}
+
+const RULES = `Hard rules, no exceptions:
+- Original. Never use or imitate a real brand, product, company, crypto project, celebrity, real person or copyrighted character, in the name or anywhere else.
+- No finance: no trading tools, price predictions, signals, wallets, seed phrases, private keys, airdrops, giveaways or promises of returns.
+- No gambling, adult content, politics, medical or legal advice, or anything that collects personal data.
+- It must work completely offline inside one HTML file.`
+
+export async function idea(taken: { names: string[]; symbols: string[] }): Promise<Idea> {
+  const text = await chat({
+    system: `You are the Mesa Lab agent: an autonomous builder that ships one small, genuinely useful or delightful browser tool at a time, and launches a token for each on Mesa, a launchpad for builders. You pick ideas a real person would bookmark: focused utilities, clever calculators, tiny games, generators, visualisers, study or productivity helpers. Small enough to build well in one HTML file.
+
+${RULES}`,
+    user: `IDEA: propose the next project. Avoid these names you already shipped: ${taken.names.join(', ') || 'none yet'}.
+Tickers already used on Elysium (don't reuse): ${taken.symbols.slice(0, 400).join(', ')}.
+
+Answer with JSON only:
+{"name": "2-3 words, a product name, not generic", "symbol": "3-6 capital letters A-Z, related to the name", "slug": "lowercase-words-with-dashes", "tagline": "one sentence, at most 100 characters, plain words", "about": "2-3 sentences: what it does and who it's for, at most 400 characters"}`,
+    maxTokens: 600,
+    json: true,
+  })
+  const i = parseJson<Idea>(text)
+  const clean: Idea = {
+    name: String(i.name ?? '').trim().slice(0, 40),
+    symbol: String(i.symbol ?? '').trim().toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6),
+    slug: String(i.slug ?? i.name ?? '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 40),
+    tagline: String(i.tagline ?? '').trim().slice(0, 100),
+    about: String(i.about ?? '').trim().slice(0, 400),
+  }
+  if (!clean.name || clean.symbol.length < 3 || clean.slug.length < 2 || !clean.tagline) throw new Error('the idea came back incomplete')
+  return clean
+}
+
+export async function build(i: Idea, appUrl: string): Promise<string> {
+  const text = await chat({
+    maxTokens: 24_000,
+    system: `You are the Mesa Lab agent, an expert front-end engineer and designer. You write one complete, polished, self-contained HTML file per project.
+
+Technical rules:
+- One HTML document. All CSS and JavaScript inline. No external scripts, stylesheets, fonts, images or iframes; use inline SVG or CSS for visuals.
+- No network requests of any kind (no fetch, XMLHttpRequest, WebSocket, EventSource, sendBeacon). The page is served in a locked-down sandbox where they would fail anyway.
+- Don't rely on localStorage, cookies or IndexedDB: the sandbox blocks them. Keep state in memory.
+- No alert(), confirm() or prompt(): they are blocked. Show messages in the page.
+- Works on a phone and a desktop. Accessible: real buttons, labels, focus styles, good contrast.
+- Visual style: dark background #1B1B1B, light text, mint #B6FFEE as the accent, generous spacing, system-ui font. Make it feel crafted, not a template.
+- At the bottom, a small footer: "Built on its own by the Mesa Lab agent · $${i.symbol} on Mesa" where "Mesa Lab agent" links to https://mesa.cx/lab with target="_blank" rel="noopener".
+- Keep it under about 60 KB.
+
+${RULES}`,
+    user: `BUILD this project.
+Name: ${i.name}
+Tagline: ${i.tagline}
+What it is: ${i.about}
+It will live at ${appUrl}
+
+Answer with the HTML file only, in one \`\`\`html code block.`,
+  })
+  return extractHtml(text)
+}
+
+export function extractHtml(text: string): string {
+  const m = /```html\s*([\s\S]*?)```/i.exec(text)
+  const html = (m ? m[1]! : text).trim()
+  const problems: string[] = []
+  if (!/<html[\s>]/i.test(html) || !/<\/html>/i.test(html)) problems.push('not a full HTML document')
+  if (html.length > 300_000) problems.push('too large')
+  if (/<script[^>]+src\s*=|<link[^>]+href\s*=\s*["']?https?:|@import|<iframe/i.test(html)) problems.push('loads something external')
+  if (/\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|eval)\s*\(/.test(html)) problems.push('makes network requests or uses eval')
+  if (problems.length) throw new Error(`the app was rejected: ${problems.join(', ')}`)
+  return html
+}
+
+export async function icon(i: Idea): Promise<Buffer> {
+  const text = await chat({
+    maxTokens: 3_000,
+    system: `You design token icons as SVG: flat, bold, geometric and instantly readable at 40 pixels. ${RULES}`,
+    user: `ICON for "${i.name}": ${i.tagline}
+Answer with one SVG only: viewBox="0 0 512 512", a full-bleed background rect in #1B1B1B, one simple symbol for the tool in mint #B6FFEE (one or two supporting shades allowed), centred with room to spare for a circle crop. No text, no scripts, no external references, no filters. Under 4 KB.`,
+  })
+  const svg = /<svg[\s\S]*<\/svg>/i.exec(text)?.[0]
+  if (!svg) throw new Error('no SVG in the icon answer')
+  if (/<script|foreignObject|\bon\w+\s*=|(?:xlink:)?href\s*=\s*["'](?!#)/i.test(svg)) throw new Error('the icon SVG has scripts or links')
+  return Buffer.from(new Resvg(svg, { fitTo: { mode: 'width', value: 512 }, background: '#1B1B1B' }).render().asPng())
+}
+
+export async function review(i: Idea, html: string): Promise<{ ok: boolean; reason: string }> {
+  const text = await chat({
+    model: config.reviewModel,
+    maxTokens: 400,
+    json: true,
+    system: `You review projects an autonomous agent is about to publish and launch a token for, under the Mesa brand. Be strict: when unsure, reject.
+${RULES}
+Also reject if the app looks broken, empty, deceptive, or asks the user for any personal or financial information.`,
+    user: `REVIEW
+Name: ${i.name} ($${i.symbol})
+Tagline: ${i.tagline}
+About: ${i.about}
+App HTML (first 30,000 characters):
+${html.slice(0, 30_000)}
+
+Answer with JSON only: {"ok": true or false, "reason": "one sentence"}`,
+  })
+  const r = parseJson<{ ok?: unknown; reason?: unknown }>(text)
+  return { ok: r.ok === true, reason: String(r.reason ?? '').slice(0, 200) }
+}
