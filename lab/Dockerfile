@@ -13,5 +13,6 @@ RUN npm ci
 COPY lab/tsconfig.json ./
 COPY lab/src ./src
 COPY lab/seed.json lab/emoji.json ./
+COPY lab/fonts ./fonts
 RUN npm run build && npm prune --omit=dev
 CMD ["node", "dist/main.js"]

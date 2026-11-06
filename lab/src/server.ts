@@ -5,6 +5,7 @@ import { watch } from './live.js'
 import { newsAddress, newsStatus } from './news.js'
 import { ideasStatus } from './ideas.js'
 import { vampStatus } from './vamps.js'
+import { workerStatus } from './workers.js'
 
 /**
  * Served at api.mesa.cx/lab/:
@@ -79,6 +80,7 @@ export function serve(o: { address: string; balance: () => Promise<number | null
     if (path === '/api/news') return void newsStatus().then((s) => json(s))
     if (path === '/api/ideas') return void ideasStatus().then((s) => json(s))
     if (path === '/api/vamps') return void vampStatus().then((s) => json(s))
+    if (path === '/api/workers') return void workerStatus().then((s) => json(s))
 
     const m = /^\/([a-z0-9-]{2,40})\/?$/.exec(path)
     if (m) {

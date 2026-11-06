@@ -1,15 +1,15 @@
 import { readFileSync } from 'node:fs'
 import { Resvg } from '@resvg/resvg-js'
 import { createAvatar } from '@dicebear/core'
-import { bigSmile, bottts, funEmoji, thumbs } from '@dicebear/collection'
+import { adventurer, bigEars, bigSmile, bottts, botttsNeutral, croodles, dylan, funEmoji, lorelei, micah, miniavs, notionists, openPeeps, pixelArt, thumbs, toonHead } from '@dicebear/collection'
 
 /**
  * Meme-coin logos from free sources, in several looks so a list of them
  * doesn't all look alike:
  *   - Microsoft Fluent Emoji in 3D, colour and flat (MIT)
  *   - Twemoji (CC BY 4.0)
- *   - DiceBear characters: Thumbs (CC0), Fun Emoji and Big Smile (CC BY 4.0),
- *     Bottts (free for commercial use)
+ *   - DiceBear characters: 15 styles, each CC0, CC BY 4.0 (credited) or free for
+ *     commercial use
  * on one of several backdrops. Each logo comes with a credit line.
  */
 export interface Emoji {
@@ -67,12 +67,21 @@ const PALETTES = [
   ['#E0C3FC', '#8EC5FC'],
   ['#FFD6A5', '#FF7B54'],
   ['#1B1B1B', '#3A3A3A'],
+  ['#F1FAEE', '#A8DADC'],
+  ['#FFF1E6', '#F4A261'],
+  ['#E9FF70', '#70D6FF'],
+  ['#FF70A6', '#FFD670'],
+  ['#00F5D4', '#9B5DE5'],
+  ['#FEE440', '#F15BB5'],
+  ['#D8F3DC', '#52B788'],
+  ['#CDB4DB', '#FFAFCC'],
+  ['#0B132B', '#3A506B'],
 ] as const
 
 /** A backdrop behind the art; the art sits in the middle 380px. */
 function backdrop(): string {
   const [a, b] = pick(PALETTES)
-  switch (Math.floor(Math.random() * 5)) {
+  switch (Math.floor(Math.random() * 10)) {
     case 0: // soft radial gradient
       return `<defs><radialGradient id="g" cx="0.5" cy="0.38" r="0.75"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></radialGradient></defs><rect width="512" height="512" fill="url(#g)"/>`
     case 1: // sunburst
@@ -84,8 +93,18 @@ function backdrop(): string {
       return `<rect width="512" height="512" fill="${a}"/>${Array.from({ length: 64 }, (_, i) => `<circle cx="${32 + (i % 8) * 64 + (Math.floor(i / 8) % 2) * 32}" cy="${32 + Math.floor(i / 8) * 64}" r="9" fill="${b}" opacity=".45"/>`).join('')}`
     case 3: // diagonal stripes
       return `<rect width="512" height="512" fill="${a}"/>${Array.from({ length: 14 }, (_, i) => `<path d="M${i * 80 - 512} 512 L${i * 80} 0 L${i * 80 + 36} 0 L${i * 80 - 476} 512Z" fill="${b}" opacity=".35"/>`).join('')}`
-    default: // flat colour with a ring
+    case 4: // flat colour with a ring
       return `<rect width="512" height="512" fill="${b}"/><circle cx="256" cy="256" r="200" fill="${a}"/>`
+    case 5: // checkerboard
+      return `<rect width="512" height="512" fill="${a}"/>${Array.from({ length: 64 }, (_, i) => ((i + Math.floor(i / 8)) % 2 ? `<rect x="${(i % 8) * 64}" y="${Math.floor(i / 8) * 64}" width="64" height="64" fill="${b}" opacity=".35"/>` : '')).join('')}`
+    case 6: // confetti
+      return `<rect width="512" height="512" fill="${a}"/>${Array.from({ length: 40 }, () => `<rect x="${Math.random() * 500}" y="${Math.random() * 500}" width="14" height="6" rx="3" fill="${pick([b, '#ffffff', '#1B1B1B'])}" opacity=".6" transform="rotate(${Math.random() * 180} ${Math.random() * 512} ${Math.random() * 512})"/>`).join('')}`
+    case 7: // halftone fade
+      return `<rect width="512" height="512" fill="${a}"/>${Array.from({ length: 256 }, (_, i) => `<circle cx="${16 + (i % 16) * 32}" cy="${16 + Math.floor(i / 16) * 32}" r="${1 + (Math.floor(i / 16) / 16) * 11}" fill="${b}" opacity=".5"/>`).join('')}`
+    case 8: // two-tone split
+      return `<rect width="512" height="512" fill="${a}"/><path d="M0 512 L512 0 L512 512 Z" fill="${b}"/>`
+    default: // concentric rings
+      return `<rect width="512" height="512" fill="${b}"/>${[230, 180, 130, 80].map((r, i) => `<circle cx="256" cy="256" r="${r}" fill="${i % 2 ? b : a}"/>`).join('')}`
   }
 }
 
@@ -123,17 +142,36 @@ async function emojiArt(e: Emoji): Promise<{ uri: string; credit: string } | nul
   return null
 }
 
-/** A cartoon character, drawn locally from the coin's ticker. */
-function character(seed: string): { uri: string; credit: string } {
-  const sets = [
-    { style: thumbs, credit: 'Thumbs by DiceBear (CC0)' },
-    { style: funEmoji, credit: 'Fun Emoji by Davis Uche, via DiceBear (CC BY 4.0)' },
-    { style: bigSmile, credit: 'Big Smile by Ashley Seo, via DiceBear (CC BY 4.0)' },
-    { style: bottts, credit: 'Bottts by Pablo Stanley, via DiceBear' },
-  ] as const
-  const s = pick(sets)
+const CHARACTERS = [
+  { style: thumbs, credit: 'Thumbs by DiceBear (CC0)' },
+  { style: funEmoji, credit: 'Fun Emoji by Davis Uche, via DiceBear (CC BY 4.0)' },
+  { style: bigSmile, credit: 'Big Smile by Ashley Seo, via DiceBear (CC BY 4.0)' },
+  { style: bottts, credit: 'Bottts by Pablo Stanley, via DiceBear' },
+  { style: pixelArt, credit: 'Pixel Art by DiceBear (CC0)' },
+  { style: lorelei, credit: 'Lorelei by Lisa Wischofsky, via DiceBear (CC0)' },
+  { style: notionists, credit: 'Notionists by Zoish, via DiceBear (CC0)' },
+  { style: openPeeps, credit: 'Open Peeps by Pablo Stanley, via DiceBear (CC0)' },
+  { style: adventurer, credit: 'Adventurer by Lisa Wischofsky, via DiceBear (CC BY 4.0)' },
+  { style: croodles, credit: 'Croodles by vijay verma, via DiceBear (CC BY 4.0)' },
+  { style: micah, credit: 'Micah by Micah Lanier, via DiceBear (CC BY 4.0)' },
+  { style: miniavs, credit: 'Miniavs by Webpixels, via DiceBear (CC BY 4.0)' },
+  { style: bigEars, credit: 'Big Ears by The Visual Team, via DiceBear (CC BY 4.0)' },
+  { style: toonHead, credit: 'Toon Head by Johan Melin, via DiceBear (CC BY 4.0)' },
+  { style: dylan, credit: 'Dylan by Natalia Spivak, via DiceBear (CC BY 4.0)' },
+] as const
+
+/** A cartoon character, drawn locally from a seed; `robots` keeps to the robot styles. */
+function character(seed: string, robots = false): { uri: string; credit: string } {
+  const s = robots ? pick([CHARACTERS[3], { style: botttsNeutral, credit: 'Bottts Neutral by Pablo Stanley, via DiceBear' }]) : pick(CHARACTERS)
   const svg = createAvatar(s.style as Parameters<typeof createAvatar>[0], { seed, backgroundColor: ['transparent'] }).toString()
   return { uri: dataUri('image/svg+xml', Buffer.from(svg)), credit: s.credit }
+}
+
+/** A cute character on a backdrop, for any agent that wants the odd cute one. */
+export function cuteLogo(seed: string, robots = false): { png: Buffer; credit: string } {
+  const art = character(seed, robots)
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">${backdrop()}<image href="${art.uri}" x="70" y="60" width="372" height="372"/></svg>`
+  return { png: Buffer.from(new Resvg(svg, { fitTo: { mode: 'width', value: 384 } }).render().asPng()), credit: art.credit }
 }
 
 /** A finished 384px PNG logo and its credit. Characters when nothing fits (or now and then for variety). */

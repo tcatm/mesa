@@ -10,6 +10,7 @@ import { serve } from './server.js'
 import { newsAddress, startNews } from './news.js'
 import { startIdeas } from './ideas.js'
 import { startVamps } from './vamps.js'
+import { startWorkers } from './workers.js'
 import { live } from './live.js'
 import { note, save, spentToday, state, walletKey, writeApp, type Project } from './store.js'
 
@@ -276,6 +277,7 @@ serve({ address, balance: () => balance().catch(() => null) })
 startNews()
 startIdeas()
 startVamps()
+startWorkers()
 void fundIdeas().catch((e) => note(`Couldn't send HYPE to the idea agent: ${String(e).slice(0, 120)}`))
 // A restart in the middle of a project leaves its last line saying "Building…".
 if (/^(Thinking of|Building) /.test(state.log[0]?.text ?? '')) note('Stopped before finishing that one: nothing was published or launched')

@@ -46,6 +46,11 @@ export interface State {
   vampLog?: { at: number; text: string }[]
   vampLastClaimAt?: number
   vampClaimedHype?: number
+  /** The worker deployer (workers.ts). */
+  workers?: import('./workers.js').Worker[]
+  workerLog?: { at: number; text: string }[]
+  workerLastClaimAt?: number
+  workerClaimedHype?: number
   /** One-off top-ups already sent (config.fundIdeas ids). */
   funded?: string[]
 }

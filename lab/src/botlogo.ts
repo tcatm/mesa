@@ -8,7 +8,7 @@ import { Resvg } from '@resvg/resvg-js'
  */
 
 /** Accent colours (antenna ball, eye glints, the prop's highlights). */
-export const ACCENTS = ['#B6FFEE', '#5AA9FF', '#FFB547', '#FF7A6B', '#A78BFA', '#B8F25C', '#4FE3E3', '#FF8AD8', '#F5D06B']
+export const ACCENTS = ['#B6FFEE', '#5AA9FF', '#FFB547', '#FF7A6B', '#A78BFA', '#B8F25C', '#4FE3E3', '#FF8AD8', '#F5D06B', '#FF9F1C', '#70D6FF', '#E9FF70', '#00F5D4', '#F15BB5', '#9B5DE5', '#C1FF72', '#FFD6A5', '#FF4D6D']
 
 const L = '#E8EDED' // light
 const M = '#9AA19E' // mid grey
@@ -115,6 +115,12 @@ const POSES: Record<string, (p: string, a: string, look: number) => string> = {
   // The prop floating above, glowing, the bot gazing up at it.
   float: (p, a, look) =>
     `<circle cx="256" cy="150" r="96" fill="${a}" opacity="0.12"/>${prop(p, a, 256, 150, 0.95)}<path d="M196 262 q8 -10 16 0 M300 262 q8 -10 16 0" stroke="${a}" stroke-width="5" fill="none" stroke-linecap="round" opacity="0.7"/><g transform="translate(256 392) scale(0.82)">${head(a, look * 0.5)}</g>${paw(180, 448)}${paw(332, 448)}`,
+  // Tilted the other way, the prop held up close to its face.
+  tilt: (p, a, look) => `<g transform="translate(210 300) rotate(-8) scale(0.84)">${head(a, look || 0.8)}</g>${prop(p, a, 368, 340, 1.05, 10)}${paw(322, 380, -12)}${paw(414, 380, -12)}`,
+  // Two small props either side of it.
+  duo: (p, a, look) => `${prop(p, a, 110, 300, 0.7, -10)}${prop(p, a, 402, 300, 0.7, 10)}<g transform="translate(256 360) scale(0.82)">${head(a, look)}</g>${paw(186, 424)}${paw(326, 424)}`,
+  // Tiny bot on top of a giant prop.
+  ontop: (p, a, look) => `${prop(p, a, 256, 330, 1.6)}<g transform="translate(256 168) scale(0.52)">${head(a, look)}</g>${paw(214, 214)}${paw(298, 214)}`,
   // Head tilted, showing off the prop beside it with one paw.
   side: (p, a, look) =>
     `<g transform="translate(196 300) rotate(-8) scale(0.88)">${head(a, look || 1)}</g>${arm(270, 340, 314, 352)}${prop(p, a, 370, 300, 0.95, -6)}${paw(316, 352, -20)}`,
@@ -130,6 +136,13 @@ const BACKDROPS: ((a: string) => string)[] = [
   (a) => `${Array.from({ length: 9 }, (_, i) => `<path d="M${i * 64} 0 V512 M0 ${i * 64} H512" stroke="${a}" stroke-opacity="0.09" stroke-width="2"/>`).join('')}`,
   (a) => `${[[60, 80], [440, 60], [120, 300], [470, 260], [300, 40], [40, 200], [400, 400], [90, 440]].map(([x, y], i) => `<path d="M${x} ${y! - 10} L${x! + 3} ${y! - 3} L${x! + 10} ${y} L${x! + 3} ${y! + 3} L${x} ${y! + 10} L${x! - 3} ${y! + 3} L${x! - 10} ${y} L${x! - 3} ${y! - 3}Z" fill="${a}" opacity="${0.25 + (i % 3) * 0.1}"/>`).join('')}`,
   (a) => `<circle cx="256" cy="236" r="190" fill="${a}" opacity="0.1"/><circle cx="256" cy="236" r="130" fill="${a}" opacity="0.08"/>`,
+  (a) => `${Array.from({ length: 8 }, (_, i) => `<path d="M0 ${60 + i * 60} Q128 ${30 + i * 60} 256 ${60 + i * 60} T512 ${60 + i * 60}" fill="none" stroke="${a}" stroke-opacity="0.12" stroke-width="3"/>`).join('')}`,
+  (a) => `<path d="M0 512 L512 0 L512 512 Z" fill="${a}" opacity="0.07"/>`,
+  (a) => `${Array.from({ length: 30 }, () => `<circle cx="${Math.random() * 512}" cy="${Math.random() * 400}" r="${1 + Math.random() * 2.5}" fill="#fff" opacity="${0.2 + Math.random() * 0.5}"/>`).join('')}<circle cx="410" cy="100" r="34" fill="${a}" opacity="0.22"/>`,
+  (a) => `${Array.from({ length: 6 }, (_, i) => `<rect x="${40 + i * 76}" y="${300 - (i % 3) * 60}" width="44" height="${212 + (i % 3) * 60}" fill="${a}" opacity="0.07"/>`).join('')}`,
+  (a) => `${Array.from({ length: 12 }, (_, i) => `<path d="M${i * 48 - 60} 0 L${i * 48 + 60} 512" stroke="${a}" stroke-opacity="0.08" stroke-width="18"/>`).join('')}`,
+  (a) => `<rect x="40" y="40" width="432" height="432" rx="60" fill="none" stroke="${a}" stroke-opacity="0.18" stroke-width="4" stroke-dasharray="14 12"/>`,
+  (a) => `${Array.from({ length: 9 }, (_, i) => `<path d="M256 236 L${256 + 400 * Math.cos(i * 0.7)} ${236 + 400 * Math.sin(i * 0.7)}" stroke="${a}" stroke-opacity="0.1" stroke-width="2"/>`).join('')}<circle cx="256" cy="236" r="60" fill="${a}" opacity="0.08"/>`,
 ]
 
 const pick = <T>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)]!
