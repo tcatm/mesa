@@ -1,13 +1,18 @@
 import { Mesa, API } from 'mesa-agent'
 import { config } from './config.js'
 import { crtScreen, DESIGNS } from './crt.js'
+import { crawlerBot } from './crawlers.js'
+import { botLogo } from './botlogo.js'
 import { save, state, walletKey } from './store.js'
 
 /**
- * The CRT deployer: every token it launches is a CRT screen (crt.ts: 28
- * procedural designs, from ASCII fractals to oscilloscopes), named half the
- * time for mesa.cx and half for x.com/mesa_elysium. No model calls, only gas.
- * Its own wallet; at most LAB_SIGNALS_MAX_PER_DAY a day, spread evenly.
+ * The domination bot: its mission is to spread Mesa across Elysium. Every
+ * token is named half the time for mesa.cx and half for x.com/mesa_elysium,
+ * with a CRT screen (crt.ts: 33 designs, from ASCII fractals to coverage maps),
+ * a detailed crawler bot (crawlers.ts) or the Mesa bot planting its flag. Its
+ * description carries Mesa's real share of Elysium's launches. No model
+ * calls, only gas. Its own wallet; LAB_SIGNALS_MAX_PER_DAY a day (every 15s
+ * by default), spread evenly.
  */
 const mesa = new Mesa({ privateKey: walletKey('signal'), maxHypePerTx: 0.01 })
 export const signalAddress = mesa.address!
@@ -32,7 +37,7 @@ function log(text: string) {
   console.log(JSON.stringify({ signals: text }))
 }
 
-const CRYPTIC = ['signal', 'transmission', 'relay', 'beacon', 'terminal', 'uplink', 'carrier', 'frequency', 'echo', 'channel', 'static', 'vector', 'node', 'archive', 'cipher', 'lattice', 'void', 'phosphor', 'monolith', 'oracle']
+const CRYPTIC = ['unit', 'swarm', 'outpost', 'colony', 'vanguard', 'emissary', 'node', 'beacon', 'uplink', 'relay', 'crawler', 'drone', 'sentinel', 'legion', 'expansion', 'signal', 'transmission', 'dominion', 'protocol', 'monolith', 'cipher', 'lattice', 'phosphor', 'oracle']
 
 function naming(caption: string) {
   const prefix = Math.random() < 0.5 ? 'mesa.cx' : 'x.com/mesa_elysium'
@@ -66,19 +71,32 @@ async function makeSignal() {
     .then((r) => r.json() as Promise<{ head: number }>)
     .then((s) => s.head)
     .catch(() => 0)
+  // Mesa's real share of Elysium's launches, for the report.
+  const venues = await fetch(`${API}/venues`, { signal: AbortSignal.timeout(15_000) })
+    .then((r) => r.json() as Promise<{ venue: string; tokens: number }[]>)
+    .catch(() => [] as { venue: string; tokens: number }[])
+  const total = venues.reduce((a, v) => a + v.tokens, 0)
+  const ours = venues.find((v) => v.venue === 'Mesa')?.tokens ?? 0
+  // The look: CRT screens most often, then crawler bots, then the Mesa bot with a flag or crown.
+  const roll = Math.random()
+  const kind = roll < 0.55 ? 'crt' : roll < 0.88 ? 'crawler' : 'bot'
   const design = Math.floor(Math.random() * DESIGNS.length)
-  // Render first: the design's caption feeds the name.
-  const probe = crtScreen({ serial: '0000000', block, design })
-  let n = naming(probe.caption)
+  const caption = kind === 'crt' ? crtScreen({ serial: '0000000', block, design }).caption : kind === 'crawler' ? 'crawler' : pick(['flag', 'crown', 'globe'])
+  let n = naming(caption)
   try {
     await mesa.resolve(n.ticker)
-    n = naming(probe.caption) // taken: another roll
+    n = naming(caption) // taken: another roll
   } catch {
     // free
   }
-  const screen = crtScreen({ serial: n.serial, block, design, header: n.header, footer: `BLK ${block.toLocaleString('en-US')}` })
-  const image = await upload(screen.png)
-  const s: Signal = { name: n.name, symbol: n.ticker, caption: screen.caption, image, token: null, tx: null, at: now() }
+  const png =
+    kind === 'crt'
+      ? crtScreen({ serial: n.serial, block, design, header: n.header, footer: `BLK ${block.toLocaleString('en-US')}` }).png
+      : kind === 'crawler'
+        ? crawlerBot(n.serial)
+        : botLogo({ prop: caption })
+  const image = await upload(png)
+  const s: Signal = { name: n.name, symbol: n.ticker, caption, image, token: null, tx: null, at: now() }
   if (config.dryRun) {
     signals().unshift(s)
     save()
@@ -87,7 +105,7 @@ async function makeSignal() {
   const res = await mesa.launch({
     name: s.name,
     symbol: s.symbol,
-    description: `Transmission ${n.serial}: ${screen.caption}, received on Elysium at block ${block.toLocaleString('en-US')}. A Mesa Lab CRT token. mesa.cx · x.com/mesa_elysium`.slice(0, 300),
+    description: `Mesa domination unit ${n.serial}. Mission: spread Mesa across Elysium. Coverage at block ${block.toLocaleString('en-US')}: ${ours.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} Elysium launches are Mesa's. mesa.cx · x.com/mesa_elysium`.slice(0, 300),
     image: image ?? undefined,
     website: 'https://mesa.cx/lab',
     feePct: config.newsFeePct,
@@ -140,7 +158,7 @@ async function tick() {
 
 export function startSignals() {
   void tick()
-  setInterval(() => void tick(), 10_000)
+  setInterval(() => void tick(), 3_000)
 }
 
 export async function signalStatus() {

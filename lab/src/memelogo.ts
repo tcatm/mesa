@@ -1,15 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { Resvg } from '@resvg/resvg-js'
-import { createAvatar } from '@dicebear/core'
-import { adventurer, bigEars, bigSmile, bottts, botttsNeutral, croodles, dylan, funEmoji, lorelei, micah, miniavs, notionists, openPeeps, pixelArt, thumbs, toonHead } from '@dicebear/collection'
 
 /**
  * Meme-coin logos from free sources, in several looks so a list of them
  * doesn't all look alike:
  *   - Microsoft Fluent Emoji in 3D, colour and flat (MIT)
  *   - Twemoji (CC BY 4.0)
- *   - DiceBear characters: 15 styles, each CC0, CC BY 4.0 (credited) or free for
- *     commercial use
  * on one of several backdrops. Each logo comes with a credit line.
  */
 export interface Emoji {
@@ -142,42 +138,11 @@ async function emojiArt(e: Emoji): Promise<{ uri: string; credit: string } | nul
   return null
 }
 
-const CHARACTERS = [
-  { style: thumbs, credit: 'Thumbs by DiceBear (CC0)' },
-  { style: funEmoji, credit: 'Fun Emoji by Davis Uche, via DiceBear (CC BY 4.0)' },
-  { style: bigSmile, credit: 'Big Smile by Ashley Seo, via DiceBear (CC BY 4.0)' },
-  { style: bottts, credit: 'Bottts by Pablo Stanley, via DiceBear' },
-  { style: pixelArt, credit: 'Pixel Art by DiceBear (CC0)' },
-  { style: lorelei, credit: 'Lorelei by Lisa Wischofsky, via DiceBear (CC0)' },
-  { style: notionists, credit: 'Notionists by Zoish, via DiceBear (CC0)' },
-  { style: openPeeps, credit: 'Open Peeps by Pablo Stanley, via DiceBear (CC0)' },
-  { style: adventurer, credit: 'Adventurer by Lisa Wischofsky, via DiceBear (CC BY 4.0)' },
-  { style: croodles, credit: 'Croodles by vijay verma, via DiceBear (CC BY 4.0)' },
-  { style: micah, credit: 'Micah by Micah Lanier, via DiceBear (CC BY 4.0)' },
-  { style: miniavs, credit: 'Miniavs by Webpixels, via DiceBear (CC BY 4.0)' },
-  { style: bigEars, credit: 'Big Ears by The Visual Team, via DiceBear (CC BY 4.0)' },
-  { style: toonHead, credit: 'Toon Head by Johan Melin, via DiceBear (CC BY 4.0)' },
-  { style: dylan, credit: 'Dylan by Natalia Spivak, via DiceBear (CC BY 4.0)' },
-] as const
-
-/** A cartoon character, drawn locally from a seed; `robots` keeps to the robot styles. */
-function character(seed: string, robots = false): { uri: string; credit: string } {
-  const s = robots ? pick([CHARACTERS[3], { style: botttsNeutral, credit: 'Bottts Neutral by Pablo Stanley, via DiceBear' }]) : pick(CHARACTERS)
-  const svg = createAvatar(s.style as Parameters<typeof createAvatar>[0], { seed, backgroundColor: ['transparent'] }).toString()
-  return { uri: dataUri('image/svg+xml', Buffer.from(svg)), credit: s.credit }
-}
-
-/** A cute character on a backdrop, for any agent that wants the odd cute one. */
-export function cuteLogo(seed: string, robots = false): { png: Buffer; credit: string } {
-  const art = character(seed, robots)
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">${backdrop()}<image href="${art.uri}" x="70" y="60" width="372" height="372"/></svg>`
-  return { png: Buffer.from(new Resvg(svg, { fitTo: { mode: 'width', value: 384 } }).render().asPng()), credit: art.credit }
-}
-
-/** A finished 384px PNG logo and its credit. Characters when nothing fits (or now and then for variety). */
+/** A finished 384px PNG logo and its credit; null when no emoji fits (the caller then uses a photo). */
 export async function memeLogo(terms: string[], seed: string): Promise<{ png: Buffer; credit: string } | null> {
   const e = matchEmoji(terms)
-  const art = e && Math.random() > 0.15 ? await emojiArt(e) : character(seed)
+  void seed
+  const art = e ? await emojiArt(e) : null
   if (!art) return null
   const tilt = Math.round((Math.random() - 0.5) * 18)
   const shadow = `<defs><radialGradient id="s" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#000" stop-opacity=".28"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient></defs><ellipse cx="256" cy="434" rx="150" ry="24" fill="url(#s)"/>`

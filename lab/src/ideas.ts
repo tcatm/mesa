@@ -2,7 +2,6 @@ import { API } from 'mesa-agent'
 import { config } from './config.js'
 import { chat, parseJson } from './llm.js'
 import { botLogo, PROP_NAMES } from './botlogo.js'
-import { cuteLogo } from './memelogo.js'
 import { newsMesa as mesa } from './news.js'
 import { save, spentToday, state, type IdeaCoin } from './store.js'
 
@@ -106,8 +105,7 @@ async function postProfile(token: string, c: IdeaCoin) {
 }
 
 async function logo(prop: string): Promise<string | null> {
-  // Mostly the Mesa bot with a prop; now and then a cute character for variety.
-  const png = Math.random() < 0.1 ? cuteLogo(prop + Math.random()).png : botLogo({ prop: PROP_NAMES.includes(prop) ? prop : undefined })
+  const png = botLogo({ prop: PROP_NAMES.includes(prop) ? prop : undefined })
   const url = await upload(png)
   if (!url) log('The logo upload failed; launching without one')
   return url

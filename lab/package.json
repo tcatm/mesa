@@ -10,8 +10,6 @@
     "start": "node dist/main.js"
   },
   "dependencies": {
-    "@dicebear/collection": "9.4.2",
-    "@dicebear/core": "9.4.2",
     "@resvg/resvg-js": "2.6.2",
     "mesa-agent": "file:../agent",
     "viem": "^2.57.16"

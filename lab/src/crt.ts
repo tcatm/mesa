@@ -474,7 +474,86 @@ const terrain: Design = (t) => {
   return { svg, caption: 'Terrain' }
 }
 
+// ---------------------------------------------------------------- domination screens
+
+const MPATH = 'M240 0 L422 0 L533 259 L382 259 L253 560 L0 560 Z M644 0 L826 0 L937 259 L786 259 L657 560 L404 560 Z M937 259 L1066 560 L808 560 Z'
+const mark = (x: number, y: number, w: number, fill: string, op = 1) => `<g transform="translate(${x} ${y}) scale(${w / 1066})" fill="${fill}" fill-opacity="${op}"><path d="${MPATH}"/></g>`
+
+/** A grid map of Elysium, cells falling to Mesa. */
+const coverage: Design = (t) => {
+  const n = 14
+  const pct = rnd(0.18, 0.72)
+  const cx = rnd(4, 10),
+    cy = rnd(4, 10)
+  let svg = ''
+  let taken = 0
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) {
+      const d = Math.hypot(x - cx, y - cy) + rnd(-1.5, 1.5)
+      const own = d < pct * 14
+      if (own) taken++
+      svg += own ? mark(SX + 34 + x * 25, SY + 48 + y * 21, 20, t.fg) : `<rect x="${SX + 40 + x * 25}" y="${SY + 54 + y * 21}" width="8" height="8" fill="${t.dim}"/>`
+    }
+  return { svg: svg + rows([`COVERAGE ${Math.round((taken / (n * n)) * 100)}%`, 'EXPANSION ONGOING'], SX + 34, SY + 372, 13, t.fg, 18, 700), caption: 'Coverage map' }
+}
+
+/** A swarm of crawlers converging on a mark. */
+const swarm: Design = (t) => {
+  let svg = mark(206, 196, 100, t.fg)
+  for (let i = 0; i < 26; i++) {
+    const a = rnd(0, Math.PI * 2),
+      r = rnd(120, 190)
+    const x = 256 + r * Math.cos(a),
+      y = 246 + r * Math.sin(a)
+    const rot = (a * 180) / Math.PI + 180
+    svg += `<g transform="translate(${x} ${y}) rotate(${rot})"><ellipse rx="7" ry="4.5" fill="${t.fg}"/>${[-4, 0, 4].map((dx) => `<path d="M${dx} -4 l-2 -5 M${dx} 4 l-2 5" stroke="${t.fg}" stroke-width="1.4"/>`).join('')}</g>
+      <path d="M${x} ${y} L${256 + (r - 40) * Math.cos(a)} ${246 + (r - 40) * Math.sin(a)}" stroke="${t.fg}" stroke-opacity=".25" stroke-dasharray="3 4"/>`
+  }
+  return { svg: svg + rows([`UNITS ${Math.floor(rnd(1200, 9999))}`], SX + 22, SY + 395, 12, t.dim), caption: 'Swarm' }
+}
+
+/** A broadcast: the mark and a slogan. */
+const broadcast: Design = (t) => {
+  const line = pick(['MESA IS EVERYWHERE', 'ALL BLOCKS LEAD HOME', 'RESISTANCE IS GAS', 'ONE CHAIN. ONE SUMMIT.', 'WE BUILD. WE SPREAD.', 'THE SUMMIT EXPANDS'])
+  return {
+    svg: `${[150, 115, 80].map((r) => `<circle cx="256" cy="200" r="${r}" fill="none" stroke="${t.fg}" stroke-opacity="${0.15 + (150 - r) / 300}" stroke-width="2"/>`).join('')}${mark(196, 158, 120, t.fg)}
+      <text x="256" y="${SY + 340}" text-anchor="middle" font-size="22" font-weight="700" fill="${t.fg}" letter-spacing="2">${esc(line)}</text>
+      <text x="256" y="${SY + 370}" text-anchor="middle" font-size="12" fill="${t.dim}" letter-spacing="4">BROADCAST // ALL FREQUENCIES</text>`,
+    caption: 'Broadcast',
+  }
+}
+
+/** A network graph, nodes turning to Mesa. */
+const infection: Design = (t) => {
+  const nodes = Array.from({ length: 22 }, () => [256 + rnd(-170, 170), 236 + rnd(-150, 150)] as const)
+  const share = rnd(0.3, 0.8)
+  let svg = ''
+  nodes.forEach(([x, y], i) =>
+    nodes.slice(i + 1).forEach(([a, b]) => {
+      if (Math.hypot(a - x, b - y) < 110) svg += `<path d="M${x} ${y} L${a} ${b}" stroke="${t.dim}" stroke-width="1.4"/>`
+    }),
+  )
+  nodes.forEach(([x, y], i) => (svg += i / nodes.length < share ? mark(x - 11, y - 6, 22, t.fg) : `<circle cx="${x}" cy="${y}" r="5" fill="none" stroke="${t.dim}" stroke-width="2"/>`))
+  return { svg: svg + rows([`NODES HELD ${Math.round(share * 100)}%`], SX + 22, SY + 395, 12, t.fg), caption: 'Network' }
+}
+
+/** A flag planted on a summit. */
+const summit: Design = (t) => {
+  const w = rnd(120, 200)
+  return {
+    svg: `<path d="M${SX + 10} ${SY + 360} L${256 - w} ${SY + 360} L${256 - 60} ${SY + 210} L${256 + 60} ${SY + 210} L${256 + w} ${SY + 360} L${SX + SW - 10} ${SY + 360}" fill="none" stroke="${t.fg}" stroke-width="2.4"/>
+      ${Array.from({ length: 6 }, (_, i) => `<path d="M${256 - 60 - i * 12} ${SY + 230 + i * 22} H${256 + 60 + i * 12}" stroke="${t.fg}" stroke-opacity=".25"/>`).join('')}
+      <path d="M256 ${SY + 210} V${SY + 90}" stroke="${t.fg}" stroke-width="3"/><rect x="256" y="${SY + 90}" width="92" height="56" fill="${t.fg}"/>${mark(270, SY + 103, 64, t.bg)}`,
+    caption: 'Summit',
+  }
+}
+
 export const DESIGNS: Design[] = [
+  coverage,
+  swarm,
+  broadcast,
+  infection,
+  summit,
   mandelbrot,
   julia,
   automaton(30, 'Rule 30'),

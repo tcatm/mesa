@@ -2,7 +2,7 @@ import { Resvg } from '@resvg/resvg-js'
 import { Mesa, API } from 'mesa-agent'
 import { config } from './config.js'
 import { save, state, walletKey } from './store.js'
-import { cuteLogo } from './memelogo.js'
+import { botLogo } from './botlogo.js'
 import { crtScreen } from './crt.js'
 
 /**
@@ -368,7 +368,7 @@ async function makeWorker() {
   const m = await mission()
   const head = await get<{ head: number }>('/stats').then((x) => x.head).catch(() => 0)
   const lines = [`> ${m.mission}`.toUpperCase(), `BLOCK ${fmt(head)} // ELYSIUM`, '> REPORTING']
-  // Mostly technical line art and CRT screens (some cryptic), now and then a cute robot.
+  // Mostly technical line art and CRT screens (some cryptic), now and then the Mesa bot itself.
   const roll = Math.random()
   const png =
     roll < 0.2
@@ -378,7 +378,7 @@ async function makeWorker() {
         : roll < 0.6
           ? crtScreen({ serial, block: head, header: 'MESA.CX', footer: `BLK ${fmt(head)}` }).png
           : roll < 0.68
-            ? cuteLogo(serial, true).png
+            ? botLogo({ prop: pick(['radar', 'server', 'compass', 'telescope', 'map', 'magnifier', 'dish', 'database', 'terminal']) })
             : logo(serial)
   const image = await upload(png)
   const w: Worker = { name, symbol, kind, mission: m.mission, report: m.report, image, token: null, tx: null, at: now() }
