@@ -217,6 +217,8 @@ async function tick() {
 }
 
 serve({ address, balance: () => balance().catch(() => null) })
+// A restart in the middle of a project leaves its last line saying "Building…".
+if (/^(Thinking of|Building) /.test(state.log[0]?.text ?? '')) note('Stopped before finishing that one: nothing was published or launched')
 console.log(JSON.stringify({ lab: 'started', address, enabled: config.enabled, dryRun: config.dryRun }))
 let running = false
 const loop = async () => {

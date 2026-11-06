@@ -65,11 +65,11 @@ export function parseJson<T>(text: string): T {
 function mock(user: string): string {
   if (user.includes('IDEA'))
     return JSON.stringify({
-      name: 'Pomodoro Garden',
-      symbol: 'POMG',
-      slug: 'pomodoro-garden',
-      tagline: 'A focus timer that grows a tiny pixel garden while you work.',
-      about: 'Set a 25 minute focus session and a plant grows one stage per session. Breaks are timed too. Everything runs in your browser.',
+      name: 'Gas Lantern',
+      symbol: 'GLAMP',
+      slug: 'gas-lantern',
+      tagline: "Live Elysium gas price and block pace, with a cost calculator for any gas limit.",
+      about: "Shows Elysium's current gas price and recent blocks from Mesa's public RPC, and turns any gas limit into a cost in HYPE.",
     })
   if (user.includes('ICON'))
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" fill="#1B1B1B"/><circle cx="256" cy="280" r="120" fill="#B6FFEE"/><rect x="246" y="120" width="20" height="80" fill="#B6FFEE"/></svg>'

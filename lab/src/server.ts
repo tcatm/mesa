@@ -10,7 +10,8 @@ import { readApp, spentToday, state } from './store.js'
  *
  * Apps are written by a model with no human review, so each is served with a
  * CSP sandbox: its own opaque origin (no cookies or storage of api.mesa.cx),
- * no network at all, no forms, popups only for links out.
+ * network only to Mesa's public read-only RPC and API, no forms, popups only
+ * for links out.
  */
 const SANDBOX = [
   'sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox',
@@ -20,7 +21,8 @@ const SANDBOX = [
   'img-src data: blob:',
   'font-src data:',
   'media-src data: blob:',
-  "connect-src 'none'",
+  // Read-only public data: Elysium's RPC and Mesa's indexer.
+  'connect-src https://rpc.mesa.cx https://api.mesa.cx',
   "form-action 'none'",
   "frame-ancestors 'self' https://mesa.cx",
   "base-uri 'none'",
