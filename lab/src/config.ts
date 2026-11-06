@@ -64,6 +64,8 @@ export const config = {
   signalsMaxPerDay: num('LAB_SIGNALS_MAX_PER_DAY', 1440),
   /** A one-off burst for the domination bot: "<id>:<seconds>", one launch a second, run once per id. */
   signalsTurbo: env.LAB_SIGNALS_TURBO ?? '',
+  /** A one-off transfer from the domination bot's wallet to the idea agent's: "<HYPE>:<id>", once per id. */
+  signalsFundIdeas: env.LAB_SIGNALS_FUND_IDEAS ?? '',
   /** A one-off top-up from the builder's wallet to the idea agent's: "<HYPE>:<id>", sent once per id. */
   fundIdeas: env.LAB_FUND_IDEAS ?? '',
   /** Testing: no launches, posts or claims (LAB_DRY_RUN=1), canned model answers (LAB_MOCK=1). */

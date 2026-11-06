@@ -5,6 +5,8 @@ import { config } from './config.js'
 import { crtScreen, DESIGNS } from './crt.js'
 import { crt, logo as lineArt, puzzle } from './workers.js'
 import { save, state, walletKey } from './store.js'
+import { newsAddress } from './news.js'
+import { parseEther, type Address } from 'viem'
 
 /**
  * The domination bot: its mission is to spread Mesa across Elysium. Every
@@ -244,7 +246,23 @@ async function tick() {
   }
 }
 
+/** One-off: send HYPE from this wallet to the idea agent's (config.signalsFundIdeas), once per id. */
+async function fundIdeas() {
+  const [amt, id] = config.signalsFundIdeas.split(':')
+  const hype = Number(amt)
+  if (!id || !(hype > 0) || hype > 1 || (state.funded ?? []).includes(`signals-${id}`) || config.dryRun) return
+  state.funded = [...(state.funded ?? []), `signals-${id}`]
+  save() // marked first, so it can never send twice
+  const account = privateKeyToAccount(walletKey('signal'))
+  const bal = Number(await pub.getBalance({ address: account.address })) / 1e18
+  if (bal < hype + 0.02) return log(`Skipped sending ${hype} HYPE to the idea agent: not enough left over`)
+  const wallet = createWalletClient({ account, chain, transport: http() })
+  const hash = await wallet.sendTransaction({ to: newsAddress as Address, value: parseEther(String(hype)) })
+  log(`Sent ${hype} HYPE to the idea agent's wallet (${hash.slice(0, 10)}…)`)
+}
+
 export function startSignals() {
+  void fundIdeas().catch((e) => log(`Couldn't send HYPE to the idea agent: ${String(e).slice(0, 120)}`))
   setInterval(() => void resolveTokens().catch(() => undefined), 10_000)
   void tick()
   setInterval(() => void tick(), 3_000)
