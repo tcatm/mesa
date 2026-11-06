@@ -1,4 +1,6 @@
-import { Mesa, API } from 'mesa-agent'
+import { Mesa, API, MESA_HOOK, launchCall, launchedToken, validate, type LaunchForm } from 'mesa-agent'
+import { createPublicClient, createWalletClient, defineChain, http, type Hex } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
 import { config } from './config.js'
 import { crtScreen, DESIGNS } from './crt.js'
 import { crt, logo as lineArt, puzzle } from './workers.js'
@@ -16,7 +18,7 @@ import { save, state, walletKey } from './store.js'
 const mesa = new Mesa({ privateKey: walletKey('signal'), maxHypePerTx: 0.01 })
 export const signalAddress = mesa.address!
 const now = () => Math.floor(Date.now() / 1000)
-export let signalPhase: 'off' | 'needs-funds' | 'waiting' | 'working' | 'full' = 'off'
+export let signalPhase: 'off' | 'needs-funds' | 'waiting' | 'working' | 'full' | 'turbo' = 'off'
 
 export interface Signal {
   name: string
@@ -65,7 +67,8 @@ async function upload(png: Buffer): Promise<string | null> {
   }
 }
 
-async function makeSignal() {
+/** Everything for one launch except sending it: the look, the name, the image. */
+async function prepare() {
   const block = await fetch(`${API}/stats`, { signal: AbortSignal.timeout(15_000) })
     .then((r) => r.json() as Promise<{ head: number }>)
     .then((s) => s.head)
@@ -98,6 +101,12 @@ async function makeSignal() {
           : lineArt(n.serial)
   const image = await upload(png)
   const s: Signal = { name: n.name, symbol: n.ticker, caption, image, token: null, tx: null, at: now() }
+  const description = `Mesa domination unit ${n.serial}. Mission: spread Mesa across Elysium. Coverage at block ${block.toLocaleString('en-US')}: ${ours.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} Elysium launches are Mesa's. mesa.cx`.slice(0, 300)
+  return { s, description }
+}
+
+async function makeSignal() {
+  const { s, description } = await prepare()
   if (config.dryRun) {
     signals().unshift(s)
     save()
@@ -106,8 +115,8 @@ async function makeSignal() {
   const res = await mesa.launch({
     name: s.name,
     symbol: s.symbol,
-    description: `Mesa domination unit ${n.serial}. Mission: spread Mesa across Elysium. Coverage at block ${block.toLocaleString('en-US')}: ${ours.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} Elysium launches are Mesa's. mesa.cx · x.com/mesa_elysium`.slice(0, 300),
-    image: image ?? undefined,
+    description,
+    image: s.image ?? undefined,
     website: 'https://mesa.cx/lab',
     feePct: config.newsFeePct,
     sniperPct: 10,
@@ -116,9 +125,77 @@ async function makeSignal() {
   s.token = res.token
   s.tx = res.hash
   signals().unshift(s)
-  state.signals = signals().slice(0, 2000)
+  state.signals = signals().slice(0, 5000)
   save()
   log(res.status === 'success' && res.token ? `Launched ${s.name} ($${s.symbol}): ${s.caption}` : `Launch of ${s.name} ${res.status}`)
+}
+
+// ---------------------------------------------------------------- turbo: one a second, pipelined
+
+const chain = defineChain({ id: 99901, name: 'Elysium', nativeCurrency: { name: 'HYPE', symbol: 'HYPE', decimals: 18 }, rpcUrls: { default: { http: ['https://rpc.mesa.cx'] } } })
+const pub = createPublicClient({ chain, transport: http() })
+let turbo = false
+
+/** Launch once a second for `seconds`: images are made in parallel, sends go out in order with local nonces. */
+async function runTurbo(seconds: number) {
+  turbo = true
+  signalPhase = 'turbo'
+  const account = privateKeyToAccount(walletKey('signal'))
+  const wallet = createWalletClient({ account, chain, transport: http() })
+  let nonce = await pub.getTransactionCount({ address: account.address, blockTag: 'pending' })
+  let sendChain: Promise<unknown> = Promise.resolve()
+  let sent = 0
+  log(`Turbo: one launch a second for ${seconds} seconds`)
+  const start = Date.now()
+  const jobs: Promise<void>[] = []
+  for (let i = 0; i < seconds; i++) {
+    const wait = start + i * 1000 - Date.now()
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait))
+    jobs.push(
+      (async () => {
+        const { s, description } = await prepare()
+        const form: LaunchForm = {
+          name: s.name, symbol: s.symbol, description, image: s.image ?? '', website: 'https://mesa.cx/lab', twitter: '', telegram: '',
+          feePct: config.newsFeePct, payout: 'wallet', feeRecipient: account.address, recipients: [], holdersPct: 0, buybackPct: 0,
+          antiSnipe: true, sniperPct: 10, snipeSeconds: 60, maxBuyPct: 100, devBuy: '0',
+        }
+        if (validate(form).length) return
+        const call = launchCall(form, MESA_HOOK!)
+        // Sends in order, each with the next nonce; a failed send re-reads the nonce from the chain.
+        sendChain = sendChain.then(async () => {
+          try {
+            const hash = await wallet.sendTransaction({ to: call.to, data: call.data as Hex, value: call.value, nonce: nonce++, gas: 1_400_000n, maxFeePerGas: 300_000_000n, maxPriorityFeePerGas: 0n })
+            s.tx = hash
+            signals().unshift(s)
+            sent++
+          } catch (e) {
+            console.error(JSON.stringify({ turboSend: String(e).slice(0, 200) }))
+            nonce = await pub.getTransactionCount({ address: account.address, blockTag: 'pending' })
+          }
+        })
+        await sendChain
+      })().catch((e) => console.error(JSON.stringify({ turboJob: String(e).slice(0, 200) }))),
+    )
+  }
+  await Promise.all(jobs)
+  state.signals = signals().slice(0, 5000)
+  save()
+  log(`Turbo done: sent ${sent} launches in ${Math.round((Date.now() - start) / 1000)}s`)
+  turbo = false
+  signalPhase = 'waiting'
+}
+
+/** Fill in token addresses for launches sent without waiting for their receipts. */
+async function resolveTokens() {
+  const open = signals().filter((s) => s.tx && !s.token && Date.now() / 1000 - s.at < 3_600).slice(0, 40)
+  for (const s of open) {
+    const r = await pub.getTransactionReceipt({ hash: s.tx as Hex }).catch(() => null)
+    if (!r) continue
+    // launchedToken reads the hook's Launched event from the receipt.
+    s.token = r.status === 'success' ? launchedToken(r as never, MESA_HOOK!) : null
+    if (r.status !== 'success') s.tx = null
+  }
+  if (open.length) save()
 }
 
 async function maybeClaim() {
@@ -139,7 +216,15 @@ async function tick() {
   if (running) return
   running = true
   try {
+    if (turbo) return
     if (!config.signalsEnabled) return void (signalPhase = 'off')
+    const [id, secs] = config.signalsTurbo.split(':')
+    if (id && Number(secs) > 0 && !(state.signalTurbos ?? []).includes(id)) {
+      state.signalTurbos = [...(state.signalTurbos ?? []), id]
+      save()
+      void runTurbo(Math.min(900, Number(secs)))
+      return
+    }
     await maybeClaim().catch((e) => console.error('signal claim', e))
     const today = signals().filter((c) => c.at > now() - 86_400 && c.token).length
     if (today >= config.signalsMaxPerDay) return void (signalPhase = 'full')
@@ -158,6 +243,7 @@ async function tick() {
 }
 
 export function startSignals() {
+  setInterval(() => void resolveTokens().catch(() => undefined), 10_000)
   void tick()
   setInterval(() => void tick(), 3_000)
 }

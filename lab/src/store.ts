@@ -56,6 +56,8 @@ export interface State {
   signalLog?: { at: number; text: string }[]
   signalLastClaimAt?: number
   signalClaimedHype?: number
+  /** Turbo bursts already run (config.signalsTurbo ids). */
+  signalTurbos?: string[]
   /** One-off top-ups already sent (config.fundIdeas ids). */
   funded?: string[]
 }
