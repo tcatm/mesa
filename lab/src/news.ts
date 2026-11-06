@@ -86,7 +86,7 @@ async function symbolFree(sym: string) {
 
 /** A free logo from Pollinations; none if it's down (the terminal shows a monogram). */
 async function logo(theme: string): Promise<string | null> {
-  const prompt = `minimal flat vector icon of ${theme}, one simple bold symbol in the centre, plain solid dark charcoal background filling the whole image, limited palette of mint green, white and grey, crisp geometric shapes, lots of empty space around it, no circle, no ring, no frame, no border, no people, no faces, no real logos, no text, no letters`
+  const prompt = `minimal flat vector icon of ${theme}, one simple bold symbol in the centre, plain solid dark charcoal background filling the whole image, limited palette of mint green, white and grey, crisp geometric shapes, lots of empty space around it, an original design that is not any existing cartoon character, meme figure or mascot, no circle, no ring, no frame, no border, no people, no faces, no real logos, no text, no letters`
   try {
     const r = await fetch(
       `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true&seed=${Math.floor(Math.random() * 1e6)}`,
