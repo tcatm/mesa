@@ -159,9 +159,9 @@ services:
       LAB_BUDGET_USD: "5"
       LAB_MAX_TOTAL: "200"
       # The news agent (lab/src/news.ts): a coin for a light story from the day's
-      # headlines, its own wallet, a 1% fee, up to 100 a day on $1 of model a day.
+      # headlines, its own wallet, a 1% fee, one every 7 minutes (205 a day) on $1 of model a day.
       LAB_NEWS_ENABLED: "1"
-      LAB_NEWS_MAX_PER_DAY: "100"
+      LAB_NEWS_MAX_PER_DAY: "205"
       LAB_NEWS_FEE_PCT: "1"
       LAB_NEWS_BUDGET_USD: "1"
       # A manual nudge: start a project now, once (unix seconds).
