@@ -17,6 +17,8 @@ export interface Idea {
   thought: string
   /** A detailed spec, when the team suggested the project (lab/seed.json). */
   brief?: string
+  /** An icon the team made for it (an https image), used instead of drawing one. */
+  image?: string
 }
 
 /** Public, read-only data the apps may use (the sandbox allows nothing else). */

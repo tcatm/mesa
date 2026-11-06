@@ -160,8 +160,8 @@ async function makeProject() {
     note(`Dropped ${i.name} at review: ${verdict.reason}`)
     return
   }
-  const png = await icon(i).catch(() => null)
-  const image = png ? await uploadImage(png) : null
+  const png = i.image ? null : await icon(i).catch(() => null)
+  const image = i.image ?? (png ? await uploadImage(png) : null)
   writeApp(i.slug, html!)
   const p: Project = { ...i, url, image, token: null, tx: null, createdAt: now(), launchedAt: null }
   state.projects.unshift(p)
