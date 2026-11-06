@@ -51,6 +51,8 @@ export interface NewsCoin {
   token: string | null
   tx: string | null
   at: number
+  /** 'news' from a headline, 'vamp' from a ticker trending on another chain. */
+  kind?: 'news' | 'vamp'
 }
 
 mkdirSync(join(config.dataDir, 'apps'), { recursive: true })

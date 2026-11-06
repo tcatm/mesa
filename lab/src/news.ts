@@ -114,6 +114,101 @@ function cropCorner(img: Buffer, type: string): Buffer {
   return Buffer.from(new Resvg(svg, { fitTo: { mode: 'width', value: 512 } }).render().asPng())
 }
 
+// ---------------------------------------------------------------- vamps
+
+interface Trend {
+  name: string
+  symbol: string
+  chain: string
+  url: string
+}
+
+let trendCache: { at: number; items: Trend[] } = { at: 0, items: [] }
+const CHAINS: Record<string, string> = { solana: 'Solana', base: 'Base', ethereum: 'Ethereum', bsc: 'BNB Chain', arbitrum: 'Arbitrum', sui: 'Sui', tron: 'Tron', ton: 'TON', avalanche: 'Avalanche', polygon: 'Polygon', abstract: 'Abstract', hyperliquid: 'Hyperliquid' }
+
+/** Tokens popping on other chains right now: DexScreener's top boosts and newest profiles, with their real names. */
+async function trending(): Promise<Trend[]> {
+  if (Date.now() - trendCache.at < 10 * 60_000 && trendCache.items.length) return trendCache.items
+  const get = async (u: string) => {
+    const r = await fetch(u, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(15_000) })
+    return r.ok ? ((await r.json()) as unknown) : null
+  }
+  const lists = await Promise.all([
+    get('https://api.dexscreener.com/token-boosts/top/v1').catch(() => null),
+    get('https://api.dexscreener.com/token-profiles/latest/v1').catch(() => null),
+  ])
+  const refs = new Map<string, { chainId: string; tokenAddress: string; url: string }>()
+  for (const list of lists)
+    for (const t of Array.isArray(list) ? (list as { chainId?: string; tokenAddress?: string; url?: string }[]) : [])
+      if (t.chainId && t.tokenAddress && !/hyperevm|elysium/i.test(t.chainId) && refs.size < 60)
+        refs.set(`${t.chainId}:${t.tokenAddress}`, { chainId: t.chainId, tokenAddress: t.tokenAddress, url: t.url ?? '' })
+  const out: Trend[] = []
+  const all = [...refs.values()]
+  for (let i = 0; i < all.length; i += 30) {
+    const batch = all.slice(i, i + 30)
+    const r = (await get(`https://api.dexscreener.com/latest/dex/tokens/${batch.map((b) => b.tokenAddress).join(',')}`).catch(() => null)) as {
+      pairs?: { chainId: string; url?: string; baseToken?: { address: string; name: string; symbol: string }; marketCap?: number }[]
+    } | null
+    const seen = new Set<string>()
+    for (const p of r?.pairs ?? []) {
+      const b = p.baseToken
+      if (!b || seen.has(`${p.chainId}:${b.address}`) || !batch.some((x) => x.tokenAddress === b.address)) continue
+      seen.add(`${p.chainId}:${b.address}`)
+      out.push({ name: b.name.trim().slice(0, 32), symbol: b.symbol.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10), chain: CHAINS[p.chainId] ?? p.chainId, url: p.url ?? batch.find((x) => x.tokenAddress === b.address)?.url ?? 'https://dexscreener.com' })
+    }
+  }
+  trendCache = { at: Date.now(), items: out.filter((t) => t.name && t.symbol.length >= 2) }
+  return trendCache.items
+}
+
+/** An Elysium vamp of a ticker trending elsewhere: same name and ticker, its own logo. */
+async function makeVamp(): Promise<boolean> {
+  const done = new Set(coins().filter((c) => c.kind === 'vamp').map((c) => c.symbol))
+  const items = (await trending()).filter((t) => !done.has(t.symbol) && !BLOCK.test(`${t.name} ${t.symbol}`))
+  for (const t of items.sort(() => Math.random() - 0.5).slice(0, 8)) {
+    if (!(await symbolFree(t.symbol))) continue
+    const check = parseJson<{ ok?: boolean; theme?: string }>(
+      await chat({
+        bucket: 'news',
+        model: config.newsModel,
+        maxTokens: 120,
+        json: true,
+        system:
+          'You check memecoin names for a launchpad and suggest an original logo idea. Reject (ok false) if the name or ticker is a slur, hateful, sexual, about a death or tragedy, or names a private individual or a minor. Otherwise ok true, with "theme": 3-6 words for a simple original symbolic picture that fits the name: an object, animal or symbol, never an existing character, mascot, meme figure, person, face or logo.',
+        user: `Name: ${t.name}\nTicker: $${t.symbol}\nAnswer JSON only: {"ok": true or false, "theme": "..."}`,
+      }),
+    )
+    if (check.ok !== true) continue
+    const blurb = `Elysium vamp of $${t.symbol}, trending on ${t.chain}.`
+    const image = await logo(String(check.theme ?? 'a bright simple star').slice(0, 60))
+    if (config.dryRun) {
+      coins().unshift({ kind: 'vamp', name: t.name, symbol: t.symbol, blurb, headline: `$${t.symbol} trending on ${t.chain}`, source: 'dexscreener.com', link: t.url, image, token: null, tx: null, at: now() })
+      save()
+      log(`Dry run: would vamp $${t.symbol} (${t.name}) from ${t.chain}`)
+      return true
+    }
+    const res = await mesa.launch({
+      name: t.name,
+      symbol: t.symbol,
+      description: `${blurb} Launched by the Mesa Lab news agent; not affiliated with the original.`,
+      image: image ?? undefined,
+      website: 'https://mesa.cx/lab',
+      feePct: config.newsFeePct,
+      sniperPct: 10,
+      snipeSeconds: 60,
+    })
+    coins().unshift({ kind: 'vamp', name: t.name, symbol: t.symbol, blurb, headline: `$${t.symbol} trending on ${t.chain}`, source: 'dexscreener.com', link: t.url, image, token: res.token, tx: res.hash, at: now() })
+    state.news = coins().slice(0, 1000)
+    save()
+    log(res.status === 'success' && res.token ? `Vamped $${t.symbol} (${t.name}), trending on ${t.chain}` : `Vamp of $${t.symbol} ${res.status}`)
+    return true
+  }
+  log('Nothing trending to vamp right now (all taken or skipped)')
+  return false
+}
+
+// ---------------------------------------------------------------- news
+
 async function makeCoin() {
   const seen = new Set(state.newsSeen ?? [])
   const fresh = (await headlines()).filter((h) => !seen.has(key(h.title)) && !BLOCK.test(h.title))
@@ -163,11 +258,11 @@ Hard rules, no exceptions: nothing built on a death, disaster, attack, war casua
 
   const image = await logo(theme)
   if (config.dryRun) {
-    coins().unshift({ name, symbol, blurb, headline: h.title, source: h.source, link: h.link, image, token: null, tx: null, at: now() })
+    coins().unshift({ kind: 'news', name, symbol, blurb, headline: h.title, source: h.source, link: h.link, image, token: null, tx: null, at: now() })
     save()
     return log(`Dry run: would launch $${symbol} (${name}): ${blurb}`)
   }
-  const coin: NewsCoin = { name, symbol, blurb, headline: h.title, source: h.source, link: h.link, image, token: null, tx: null, at: now() }
+  const coin: NewsCoin = { kind: 'news', name, symbol, blurb, headline: h.title, source: h.source, link: h.link, image, token: null, tx: null, at: now() }
   const res = await mesa.launch({
     name,
     symbol,
@@ -216,7 +311,11 @@ async function tick() {
     if (now() - (coins()[0]?.at ?? 0) < gap) return void (newsPhase = 'waiting')
     if (!config.dryRun && Number((await mesa.balance()).HYPE) < config.minHype) return void (newsPhase = 'needs-funds')
     newsPhase = 'working'
-    await makeCoin()
+    // Alternate: a vamp of something trending elsewhere, then a coin from the news.
+    const lastWasVamp = coins()[0]?.kind === 'vamp'
+    if (config.newsVamps && !lastWasVamp) {
+      if (!(await makeVamp().catch((e) => (log(`Vamp failed: ${String(e).slice(0, 120)}`), false)))) await makeCoin()
+    } else await makeCoin()
     newsPhase = 'waiting'
   } catch (e) {
     log(`Something went wrong: ${String(e instanceof Error ? e.message : e).slice(0, 160)}`)

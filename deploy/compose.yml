@@ -163,6 +163,8 @@ services:
       LAB_NEWS_ENABLED: "1"
       LAB_NEWS_MAX_PER_DAY: "411"
       LAB_NEWS_FEE_PCT: "1"
+      # Every other coin vamps a ticker trending on another chain (DexScreener), with an original logo.
+      LAB_NEWS_VAMPS: "1"
       LAB_NEWS_BUDGET_USD: "1"
       # A manual nudge: start a project now, once (unix seconds).
       LAB_KICK: "1793967947"

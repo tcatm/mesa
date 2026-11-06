@@ -41,6 +41,8 @@ export const config = {
   newsBudgetUsdPerDay: num('LAB_NEWS_BUDGET_USD', 1),
   newsModel: env.LAB_NEWS_MODEL ?? 'anthropic/claude-haiku-5.5',
   newsFeePct: num('LAB_NEWS_FEE_PCT', 1),
+  /** Every other coin vamps a ticker trending on another chain (DexScreener), with an original logo. */
+  newsVamps: env.LAB_NEWS_VAMPS === '1',
   newsFeeds: (
     env.LAB_NEWS_FEEDS ??
     'https://feeds.bbci.co.uk/news/science_and_environment/rss.xml,https://feeds.bbci.co.uk/news/technology/rss.xml,https://feeds.bbci.co.uk/news/rss.xml,https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en,https://hnrss.org/frontpage'
