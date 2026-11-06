@@ -10,6 +10,7 @@ import { bridgeLookup, bridgeStats } from './bridgeTracker.js'
 import { UpdateError, listUpdates, migrateUpdates, postUpdate } from './updates.js'
 import { PX, tableBuilder } from './table.js'
 import { startMev } from './mev.js'
+import { getProject, migrateProjects, saveProfile, verifyGithub } from './projects.js'
 
 const DAY = 86_400
 const HOUR = 3_600
@@ -29,6 +30,8 @@ type Row = Record<string, unknown>
  *   GET /tokens/:address/trades?limit=&before=<unix seconds>
  *   GET /tokens/:address/candles?interval=<seconds>&limit=
  *   GET /tokens/:address/holders?limit=
+ *   GET /tokens/:address/project    the signed project profile, verified GitHub, last build-log post
+ *   POST /projects, POST /projects/github   (see projects.ts)
  *   GET /venues
  *   GET /wallets/:address   holdings and PnL
  *   GET /bridge             Mesa bridge totals and recent transfers
@@ -40,6 +43,7 @@ type Row = Record<string, unknown>
 export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number) {
   startHypeUsd()
   migrateUpdates(db)
+  migrateProjects(db)
   const mev = startMev(db)
   const hype = new Set(n.hype.map((a) => a.toLowerCase()))
   const usd = n.usd?.address.toLowerCase()
@@ -444,6 +448,31 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
         req.on('close', () => streams.delete(res))
         return
       }
+      // Project profiles: POST /projects with a signed profile, POST /projects/github with a
+      // gist that proves a GitHub account; GET /tokens/<a>/project.
+      if (parts[0] === 'projects' && req.method === 'POST' && parts.length <= 2) {
+        let body = ''
+        let size = 0
+        req.on('data', (c: Buffer) => {
+          size += c.length
+          if (size <= 32_768) body += c.toString('utf8')
+        })
+        req.on('end', () => {
+          void (async () => {
+            try {
+              if (size > 32_768) throw new UpdateError('too large', 413)
+              const b = JSON.parse(body || '{}') as Record<string, unknown>
+              if (parts[1] === 'github') json({ ok: true, github: await verifyGithub(db, b) })
+              else if (!parts[1]) json({ ok: true, project: saveProfile(db, b) })
+              else json({ error: 'not found' }, 404)
+            } catch (e) {
+              if (e instanceof UpdateError) json({ error: e.message }, e.status)
+              else json({ error: 'bad request' }, 400)
+            }
+          })()
+        })
+        return
+      }
       // The build log: POST /updates with a signed update; GET /updates, /tokens/<a>/updates.
       if (parts[0] === 'updates' && parts.length === 1) {
         if (req.method === 'POST') {
@@ -548,6 +577,7 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
           return t ? json(t) : json({ error: 'unknown token' }, 404)
         }
         if (parts[2] === 'updates') return json(listUpdates(db, a, num('limit', 50, 200)))
+        if (parts[2] === 'project') return json(getProject(db, a))
         if (parts[2] === 'trades') {
           const before = Number(q.get('before') ?? 1e12)
           return json(
