@@ -161,9 +161,13 @@ export async function verifyGithub(db: DatabaseSync, body: Record<string, unknow
     .replace(/\r/g, '')
   const sig = /Signature:\s*(0x[0-9a-fA-F]{130})/.exec(text)?.[1]
   if (!sig) throw new UpdateError('gist: no "Signature: 0x…" line found')
+  // The name as the builder typed it when signing (GitHub names ignore case).
+  const named = /GitHub:\s*([A-Za-z0-9-]{1,39})/.exec(text)?.[1] ?? username
+  if (named.toLowerCase() !== username.toLowerCase())
+    throw new UpdateError(`gist: signed for GitHub user ${named}, but posted by ${username}`, 403)
   let author: string
   try {
-    author = utils.verifyMessage(githubMessage(token, username), sig).toLowerCase()
+    author = utils.verifyMessage(githubMessage(token, named), sig).toLowerCase()
   } catch {
     throw new UpdateError('signature: not valid')
   }
