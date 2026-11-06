@@ -6,7 +6,7 @@ import { save, state, walletKey } from './store.js'
 
 /**
  * The domination bot: its mission is to spread Mesa across Elysium. Every
- * token is named half the time for mesa.cx and half for x.com/mesa_elysium,
+ * token is named for mesa.cx,
  * with only cryptic looks: CRT screens (crt.ts: 33 designs, from ASCII fractals to
  * coverage maps), cipher and riddle screens, terminal readouts or technical line art. Its
  * description carries Mesa's real share of Elysium's launches. No model
@@ -39,7 +39,7 @@ function log(text: string) {
 const CRYPTIC = ['unit', 'swarm', 'outpost', 'colony', 'vanguard', 'emissary', 'node', 'beacon', 'uplink', 'relay', 'crawler', 'drone', 'sentinel', 'legion', 'expansion', 'signal', 'transmission', 'dominion', 'protocol', 'monolith', 'cipher', 'lattice', 'phosphor', 'oracle']
 
 function naming(caption: string) {
-  const prefix = Math.random() < 0.5 ? 'mesa.cx' : 'x.com/mesa_elysium'
+  const prefix = 'mesa.cx'
   const serial = String(Math.floor(1_000_000 + Math.random() * 9_000_000))
   const short = serial.slice(-4)
   const hex = Math.floor(Math.random() * 0xfffff).toString(16).toUpperCase().padStart(5, '0')
