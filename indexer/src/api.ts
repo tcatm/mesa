@@ -352,13 +352,15 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
       `SELECT tx, timestamp, quote_amount hype, token_amount mesa FROM trades WHERE token = ? AND kind = 'buyback' ORDER BY block DESC, log_index DESC LIMIT 1000`,
       token,
     )
-    // Burns sent straight to the dead address (not by the buyback burner), e.g. a holder burning by hand.
-    const burner = n.mesa?.burner.toLowerCase() ?? ''
+    // Burns sent straight to the dead address outside a buyback, e.g. a holder burning by hand.
+    // (A buyback's burn comes from the pool manager in the buyback's own transaction.)
     const manual = all(
-      `SELECT tx, block, src, amount mesa FROM transfers WHERE token = ? AND dst = ? AND src != ? ORDER BY block DESC LIMIT 200`,
+      `SELECT tx, block, src, amount mesa FROM transfers WHERE token = ? AND dst = ?
+         AND tx NOT IN (SELECT tx FROM trades WHERE token = ? AND kind = 'buyback')
+       ORDER BY block DESC LIMIT 200`,
       token,
       DEAD,
-      burner,
+      token,
     ).map((b) => ({ ...b, timestamp: blockTime(b.block as number) }))
     const t = now()
     const fees = all(
