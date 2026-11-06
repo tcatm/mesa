@@ -6,7 +6,7 @@ import type { ServerResponse } from 'node:http'
  * events). New viewers get the recent history first. Public: never put
  * secrets in here.
  */
-export type LiveKind = 'phase' | 'step' | 'thought' | 'code' | 'code-start' | 'code-end'
+export type LiveKind = 'phase' | 'step' | 'thought' | 'code' | 'code-start' | 'code-end' | 'think'
 
 export interface LiveEvent {
   id: number
@@ -24,20 +24,20 @@ export function live(kind: LiveKind, text: string) {
   history.push(e)
   // Keep the last project's code and the recent steps; trim old code first.
   if (history.length > 600) {
-    const i = history.findIndex((h) => h.kind === 'code')
+    const i = history.findIndex((h) => h.kind === 'code' || h.kind === 'think')
     history.splice(i >= 0 && i < history.length - 200 ? i : 0, 1)
   }
   const line = `id: ${e.id}\ndata: ${JSON.stringify(e)}\n\n`
   for (const v of viewers) v.write(line)
 }
 
-/** Batches a stream of model tokens into a few code events a second. */
-export function codeStream() {
+/** Batches a stream of model tokens into a few events a second (code, or 'think' for its reasoning). */
+export function codeStream(kind: 'code' | 'think' = 'code') {
   let buf = ''
   let timer: NodeJS.Timeout | null = null
   const flush = () => {
     timer = null
-    if (buf) live('code', buf)
+    if (buf) live(kind, buf)
     buf = ''
   }
   return {

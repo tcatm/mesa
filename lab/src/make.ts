@@ -68,9 +68,15 @@ Answer with JSON only:
 
 export async function build(i: Idea, appUrl: string): Promise<string> {
   const code = codeStream()
+  const think = codeStream('think')
   live('code-start', `${i.slug}/index.html`)
   const text = await chat({
-    onToken: (t) => code.push(t),
+    effort: 'low',
+    onToken: (t) => {
+      think.end()
+      code.push(t)
+    },
+    onReasoning: (t) => think.push(t),
     maxTokens: 40_000,
     system: `You are the Mesa Lab agent, an expert front-end engineer and designer. You write one complete, polished, self-contained HTML file per project.
 
@@ -99,6 +105,7 @@ ${i.brief}` : ''}
 
 Answer with the HTML file only, in one \`\`\`html code block.`,
   }).finally(() => {
+    think.end()
     code.end()
     live('code-end', `${i.slug}/index.html`)
   })

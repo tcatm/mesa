@@ -15,6 +15,10 @@ export async function chat(o: {
   json?: boolean
   /** Called with each piece of the answer as it streams in. */
   onToken?: (t: string) => void
+  /** Called with the model's reasoning as it streams in (shown live). */
+  onReasoning?: (t: string) => void
+  /** How hard the model thinks before answering; it shares max_tokens with the answer. */
+  effort?: 'none' | 'minimal' | 'low' | 'medium'
 }): Promise<string> {
   if (spentToday() >= config.budgetUsdPerDay) throw new BudgetError(`today's model budget of $${config.budgetUsdPerDay} is used up`)
   if (config.mock) {
@@ -39,11 +43,12 @@ export async function chat(o: {
       ],
       ...(o.json ? { response_format: { type: 'json_object' } } : {}),
       usage: { include: true },
+      reasoning: { effort: o.effort ?? 'none' },
       ...(o.onToken ? { stream: true } : {}),
     }),
     signal: AbortSignal.timeout(300_000),
   })
-  if (o.onToken && r.ok && r.body) return readStream(r.body, o.onToken)
+  if (o.onToken && r.ok && r.body) return readStream(r.body, o.onToken, o.onReasoning)
   const body = (await r.json().catch(() => null)) as {
     choices?: { message?: { content?: string } }[]
     usage?: { cost?: number }
@@ -61,12 +66,18 @@ export async function chat(o: {
 }
 
 /** Reads a streamed answer (server-sent events), passing each piece on and counting its cost. */
-async function readStream(body: ReadableStream<Uint8Array>, onToken: (t: string) => void): Promise<string> {
+async function readStream(
+  body: ReadableStream<Uint8Array>,
+  onToken: (t: string) => void,
+  onReasoning?: (t: string) => void,
+): Promise<string> {
   const reader = body.getReader()
   const dec = new TextDecoder()
   let buf = ''
   let text = ''
   let cost = 0
+  let reasoned = 0
+  let finish = ''
   for (;;) {
     const { value, done } = await reader.read()
     if (done) break
@@ -80,12 +91,19 @@ async function readStream(body: ReadableStream<Uint8Array>, onToken: (t: string)
       if (data === '[DONE]') continue
       try {
         const j = JSON.parse(data) as {
-          choices?: { delta?: { content?: string } }[]
+          choices?: { delta?: { content?: string; reasoning?: string }; finish_reason?: string | null }[]
           usage?: { cost?: number }
           error?: { message?: string }
         }
         if (j.error) throw new Error(`OpenRouter: ${j.error.message ?? 'stream error'}`)
-        const t = j.choices?.[0]?.delta?.content
+        const c = j.choices?.[0]
+        if (c?.finish_reason) finish = c.finish_reason
+        const rz = c?.delta?.reasoning
+        if (rz) {
+          reasoned += rz.length
+          onReasoning?.(rz)
+        }
+        const t = c?.delta?.content
         if (t) {
           text += t
           onToken(t)
@@ -98,7 +116,9 @@ async function readStream(body: ReadableStream<Uint8Array>, onToken: (t: string)
   }
   state.spend[today()] = spentToday() + (Number.isFinite(cost) ? cost : 0)
   save()
-  if (!text.trim()) throw new Error('the model answered with nothing')
+  if (!text.trim())
+    throw new Error(`the model answered with nothing (stopped: ${finish || 'unknown'}, ${Math.round(reasoned / 1000)}K characters of reasoning)`)
+  if (finish === 'length') throw new Error(`the model ran out of room after ${Math.round(text.length / 1000)} KB`)
   return text
 }
 
