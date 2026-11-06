@@ -78,6 +78,8 @@ export interface NewsCoin {
   at: number
   /** 'news' from a headline, 'vamp' from a ticker trending on another chain. */
   kind?: 'news' | 'vamp'
+  /** Where a vamp's picture came from (public domain / CC0 on Wikimedia Commons). */
+  imageCredit?: string
 }
 
 mkdirSync(join(config.dataDir, 'apps'), { recursive: true })

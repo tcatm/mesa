@@ -164,6 +164,8 @@ services:
       LAB_IDEAS_ENABLED: "1"
       LAB_IDEAS_MAX_PER_DAY: "1440"
       LAB_FUND_IDEAS: "0.1:nov6"
+      LAB_VAMPS_ENABLED: "1"
+      LAB_VAMPS_MAX_PER_DAY: "1440"
       LAB_NEWS_MAX_PER_DAY: "411"
       LAB_NEWS_FEE_PCT: "1"
       # Every other coin vamps a ticker trending on another chain (DexScreener), with an original logo.

@@ -4,6 +4,7 @@ import { readApp, spentToday, state } from './store.js'
 import { watch } from './live.js'
 import { newsAddress, newsStatus } from './news.js'
 import { ideasStatus } from './ideas.js'
+import { vampStatus } from './vamps.js'
 
 /**
  * Served at api.mesa.cx/lab/:
@@ -12,6 +13,7 @@ import { ideasStatus } from './ideas.js'
  *   GET /lab/api/live       server-sent events: its steps, thoughts and code as it writes
  *   GET /lab/api/news       the news agent: its wallet, what it's doing, every coin and the headline behind it
  *   GET /lab/api/ideas      the idea agent: open, forkable project ideas, each with a coin
+ *   GET /lab/api/vamps      the vamp agent: Elysium versions of tokens trending on other chains
  *   GET /lab/<slug>/        an app, in a strict sandbox
  *
  * Apps are written by a model with no human review, so each is served with a
@@ -76,6 +78,7 @@ export function serve(o: { address: string; balance: () => Promise<number | null
     if (path === '/api/live') return watch(res)
     if (path === '/api/news') return void newsStatus().then((s) => json(s))
     if (path === '/api/ideas') return void ideasStatus().then((s) => json(s))
+    if (path === '/api/vamps') return void vampStatus().then((s) => json(s))
 
     const m = /^\/([a-z0-9-]{2,40})\/?$/.exec(path)
     if (m) {
