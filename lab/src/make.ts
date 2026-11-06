@@ -143,10 +143,14 @@ export async function icon(i: Idea): Promise<Buffer> {
 async function drawnIcon(i: Idea): Promise<Buffer> {
   if (config.mock) throw new Error('mock')
   const prop = await chat({
-    maxTokens: 120,
+    model: config.reviewModel,
+    maxTokens: 300,
     system: 'You suggest one simple, iconic physical prop that represents a developer tool, for a mascot to hold or use in a coin logo. Answer with the prop only, under 12 words.',
     user: `ICON prop for "${i.name}": ${i.tagline}`,
-  }).catch(() => 'a small glowing tool')
+  }).catch((e) => {
+    console.error('icon prop', e)
+    return 'a small glowing tool'
+  })
   const prompt = `A coin logo for a developer tool called ${i.name}. Use the reference image for the character and style: the same small grey robot with a rounded square head, a thin antenna with a mint ball on top, and two dark round eyes with tiny mint glints, no mouth. Here the robot is holding or using ${prop.trim().replace(/[."]+$/, '')}. Flat vector illustration, clean geometric shapes, soft subtle shading, no outlines. Solid near-black background #1B1B1B filling the whole square edge to edge, mint #B6FFEE as the only accent colour, light grey robot. The robot and prop centred and fully inside a circle crop, with breathing room. No text, no letters, no numbers, no border, no frame, no coin rim.`
   const r = await fetch('https://openrouter.ai/api/v1/images', {
     method: 'POST',

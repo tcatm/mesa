@@ -5,6 +5,7 @@ import { config } from './config.js'
 import { BudgetError } from './llm.js'
 import { build, icon, idea, review, type Idea } from './make.js'
 import { serve } from './server.js'
+import { startNews } from './news.js'
 import { live } from './live.js'
 import { note, save, spentToday, state, walletKey, writeApp, type Project } from './store.js'
 
@@ -253,6 +254,7 @@ async function tick() {
 }
 
 serve({ address, balance: () => balance().catch(() => null) })
+startNews()
 // A restart in the middle of a project leaves its last line saying "Building…".
 if (/^(Thinking of|Building) /.test(state.log[0]?.text ?? '')) note('Stopped before finishing that one: nothing was published or launched')
 console.log(JSON.stringify({ lab: 'started', address, enabled: config.enabled, dryRun: config.dryRun }))

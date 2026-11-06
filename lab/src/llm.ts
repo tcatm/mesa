@@ -19,8 +19,11 @@ export async function chat(o: {
   onReasoning?: (t: string) => void
   /** How hard the model thinks before answering; it shares max_tokens with the answer. */
   effort?: 'none' | 'minimal' | 'low' | 'medium'
+  /** Whose budget pays: the builder agent's (default) or the news agent's. */
+  bucket?: 'lab' | 'news'
 }): Promise<string> {
-  if (spentToday() >= config.budgetUsdPerDay) throw new BudgetError(`today's model budget of $${config.budgetUsdPerDay} is used up`)
+  const bucket = o.bucket ?? 'lab'
+  if (spentToday(bucket) >= budgetOf(bucket)) throw new BudgetError(`today's ${bucket === 'news' ? 'news ' : ''}model budget of $${budgetOf(bucket)} is used up`)
   if (config.mock) {
     const text = mock(o.user)
     if (o.onToken) for (let i = 0; i < text.length; i += 60) (o.onToken(text.slice(i, i + 60)), await new Promise((r) => setTimeout(r, 15)))
@@ -48,18 +51,14 @@ export async function chat(o: {
     }),
     signal: AbortSignal.timeout(300_000),
   })
-  if (o.onToken && r.ok && r.body) return readStream(r.body, o.onToken, o.onReasoning)
+  if (o.onToken && r.ok && r.body) return readStream(r.body, o.onToken, o.onReasoning, bucket)
   const body = (await r.json().catch(() => null)) as {
     choices?: { message?: { content?: string } }[]
     usage?: { cost?: number }
     error?: { message?: string }
   } | null
   if (!r.ok || !body) throw new Error(`OpenRouter ${r.status}: ${body?.error?.message ?? 'no answer'}`)
-  const cost = Number(body.usage?.cost ?? 0)
-  state.spend[today()] = spentToday() + (Number.isFinite(cost) ? cost : 0)
-  // Keep a month of spend.
-  for (const d of Object.keys(state.spend).sort().slice(0, -31)) delete state.spend[d]
-  save()
+  addSpend(Number(body.usage?.cost ?? 0), bucket)
   const text = body.choices?.[0]?.message?.content ?? ''
   if (!text.trim()) throw new Error('the model answered with nothing')
   return text
@@ -70,6 +69,7 @@ async function readStream(
   body: ReadableStream<Uint8Array>,
   onToken: (t: string) => void,
   onReasoning?: (t: string) => void,
+  bucket: 'lab' | 'news' = 'lab',
 ): Promise<string> {
   const reader = body.getReader()
   const dec = new TextDecoder()
@@ -114,8 +114,7 @@ async function readStream(
       }
     }
   }
-  state.spend[today()] = spentToday() + (Number.isFinite(cost) ? cost : 0)
-  save()
+  addSpend(cost, bucket)
   if (!text.trim())
     throw new Error(`the model answered with nothing (stopped: ${finish || 'unknown'}, ${Math.round(reasoned / 1000)}K characters of reasoning)`)
   if (finish === 'length') throw new Error(`the model ran out of room after ${Math.round(text.length / 1000)} KB`)
@@ -123,10 +122,14 @@ async function readStream(
 }
 
 /** Adds a call's cost to today's spend (for calls outside chat(), like images). */
-export function addSpend(usd: number) {
-  state.spend[today()] = spentToday() + (Number.isFinite(usd) ? usd : 0)
+export function addSpend(usd: number, bucket: 'lab' | 'news' = 'lab') {
+  const book = bucket === 'news' ? (state.newsSpend ??= {}) : state.spend
+  book[today()] = (book[today()] ?? 0) + (Number.isFinite(usd) ? usd : 0)
+  // Keep a month.
+  for (const d of Object.keys(book).sort().slice(0, -31)) delete book[d]
   save()
 }
+const budgetOf = (b: 'lab' | 'news') => (b === 'news' ? config.newsBudgetUsdPerDay : config.budgetUsdPerDay)
 
 /** JSON from a model answer, even when it's wrapped in a code fence. */
 export function parseJson<T>(text: string): T {
@@ -139,6 +142,9 @@ export function parseJson<T>(text: string): T {
 
 // Canned answers for testing without a key (LAB_MOCK=1).
 function mock(user: string): string {
+  if (user.includes('Headlines:'))
+    return JSON.stringify({ index: 0, name: 'Comet Wink', symbol: 'WINKZ', blurb: 'A newly spotted comet will swing past Jupiter next spring.', theme: 'a small comet with a mint tail' })
+  if (user.includes('Ticker:')) return JSON.stringify({ ok: true })
   if (user.includes('IDEA'))
     return JSON.stringify({
       name: 'Gas Lantern',

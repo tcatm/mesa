@@ -35,6 +35,19 @@ export const config = {
   kick: num('LAB_KICK', 0),
   /** Claim fees once they reach this much HYPE, at most once a day. */
   claimAt: num('LAB_CLAIM_AT', 0.01),
+  /** The news agent: a coin for a light, safe story from the day's headlines. */
+  newsEnabled: env.LAB_NEWS_ENABLED === '1',
+  newsMaxPerDay: num('LAB_NEWS_MAX_PER_DAY', 100),
+  newsBudgetUsdPerDay: num('LAB_NEWS_BUDGET_USD', 1),
+  newsModel: env.LAB_NEWS_MODEL ?? 'anthropic/claude-haiku-5.5',
+  newsFeePct: num('LAB_NEWS_FEE_PCT', 1),
+  newsFeeds: (
+    env.LAB_NEWS_FEEDS ??
+    'https://feeds.bbci.co.uk/news/science_and_environment/rss.xml,https://feeds.bbci.co.uk/news/technology/rss.xml,https://feeds.bbci.co.uk/news/rss.xml,https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en,https://hnrss.org/frontpage'
+  )
+    .split(',')
+    .map((u) => u.trim())
+    .filter(Boolean),
   /** Testing: no launches, posts or claims (LAB_DRY_RUN=1), canned model answers (LAB_MOCK=1). */
   dryRun: env.LAB_DRY_RUN === '1',
   mock: env.LAB_MOCK === '1',

@@ -31,18 +31,40 @@ export interface State {
   claimedHype: number
   lastError: { at: number; message: string } | null
   log: { at: number; text: string }[]
+  /** The news agent (news.ts). */
+  news?: NewsCoin[]
+  newsSpend?: Record<string, number>
+  newsSeen?: string[]
+  newsLog?: { at: number; text: string }[]
+  newsLastClaimAt?: number
+  newsClaimedHype?: number
+}
+
+export interface NewsCoin {
+  name: string
+  symbol: string
+  blurb: string
+  headline: string
+  source: string
+  link: string
+  image: string | null
+  token: string | null
+  tx: string | null
+  at: number
 }
 
 mkdirSync(join(config.dataDir, 'apps'), { recursive: true })
 const STATE = join(config.dataDir, 'state.json')
 const KEY = join(config.dataDir, 'wallet.key')
 
-export function walletKey(): Hex {
-  if (!existsSync(KEY)) {
-    writeFileSync(KEY, generatePrivateKey(), { mode: 0o600 })
-    chmodSync(KEY, 0o600)
+/** A wallet key kept in the data directory, made on first use; it never leaves the server. */
+export function walletKey(name = 'wallet'): Hex {
+  const file = name === 'wallet' ? KEY : join(config.dataDir, `${name}.key`)
+  if (!existsSync(file)) {
+    writeFileSync(file, generatePrivateKey(), { mode: 0o600 })
+    chmodSync(file, 0o600)
   }
-  return readFileSync(KEY, 'utf8').trim() as Hex
+  return readFileSync(file, 'utf8').trim() as Hex
 }
 
 export const state: State = existsSync(STATE)
@@ -64,7 +86,8 @@ export function note(text: string) {
 }
 
 export const today = () => new Date().toISOString().slice(0, 10)
-export const spentToday = () => state.spend[today()] ?? 0
+export const spentToday = (bucket: 'lab' | 'news' = 'lab') =>
+  (bucket === 'news' ? state.newsSpend?.[today()] : state.spend[today()]) ?? 0
 
 export const appDir = (slug: string) => join(config.dataDir, 'apps', slug)
 export function writeApp(slug: string, html: string) {
