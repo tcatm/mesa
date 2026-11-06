@@ -12,6 +12,8 @@ import { PX, tableBuilder } from './table.js'
 import { startMev } from './mev.js'
 import { getProject, migrateProjects, saveProfile, verifyGithub } from './projects.js'
 import { POOLS, TOTAL, estimate, type PoolName, type WalletScore } from './airdrop.js'
+import { SNAPSHOT, startOg } from './og.js'
+import { startGithub } from './github.js'
 
 const DAY = 86_400
 const HOUR = 3_600
@@ -430,7 +432,26 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
     for (const s of streams) s.write(': ping\n\n')
   }, 20_000).unref()
 
-  // The Builder Drop is scored on its own thread every 10 minutes (airdrop.ts).
+  // The Builder Drop is scored on its own thread every 10 minutes (airdrop.ts); og.ts and
+  // github.ts gather the HyperEVM / HyperCore snapshot and GitHub activity it reads.
+  const og = startOg(db)
+  startGithub(db)
+  /** The wallets that hold the drop's $MESA, spread out for distribution: the dev wallet and the dev-linked wallets. */
+  const DROP_WALLETS = [
+    '0x25db99d67481aaeb389a57ae097f2a02e48f0e13',
+    '0xde4bf01f33295478233580d692ea9174a0041f9b',
+    '0xa1dbea738a09b70576ce95e7e782c4196381bd17',
+    '0x415dd9343b04f953cfce0d0ce96cf17a9e314db7',
+    '0x6b9e2294dc291f9b99c6b1ef876e889092827669',
+  ]
+  const reserve = () => {
+    const token = (one('SELECT token FROM mesa_launches WHERE genesis = 1 LIMIT 1')?.token as string | undefined)?.toLowerCase()
+    const wallets = DROP_WALLETS.map((a) => ({
+      address: a,
+      balance: token ? ((one('SELECT balance FROM balances WHERE lower(token) = ? AND lower(holder) = ?', token, a)?.balance as number | undefined) ?? 0) : 0,
+    }))
+    return { wallets, total: wallets.reduce((x, w) => x + w.balance, 0) }
+  }
   let drop: { at: number; totals: Record<PoolName, number>; wallets: number; live: string[]; scores: Map<string, WalletScore>; sorted: number[] } | null = null
   {
     const ts = import.meta.url.endsWith('.ts')
@@ -529,10 +550,11 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
       if (parts[0] === 'stats') return json(stats())
       if (parts[0] === 'mesa' && parts.length === 1) return json(mesaBurns())
       if (parts[0] === 'airdrop' && parts.length === 1)
-        return json({ total: TOTAL, pools: POOLS, ready: !!drop, at: drop?.at ?? null, totals: drop?.totals ?? null, wallets: drop?.wallets ?? 0, liveCoins: drop?.live.length ?? 0 })
+        return json({ total: TOTAL, pools: POOLS, ready: !!drop, at: drop?.at ?? null, totals: drop?.totals ?? null, wallets: drop?.wallets ?? 0, liveCoins: drop?.live.length ?? 0, snapshot: SNAPSHOT, reserve: reserve() })
       if (parts[0] === 'airdrop' && parts.length === 2) {
         const w = parts[1]!.toLowerCase()
         if (!/^0x[0-9a-f]{40}$/.test(w)) return json({ error: 'not an address' }, 400)
+        og.want(w) // snapshot its $HYPE / $KNTQ holdings if it hasn't been yet
         if (!drop) return json({ ready: false })
         const e = estimate(drop, drop.scores.get(w))
         let rank: number | null = null

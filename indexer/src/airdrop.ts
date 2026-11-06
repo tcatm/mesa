@@ -48,6 +48,8 @@ export interface Item {
   detail?: string
 }
 export interface WalletScore {
+  /** Set when the wallet was grouped with others funded from one source; only the top wallet keeps trading points. */
+  grouped?: { funder: string; size: number }
   pools: Partial<Record<PoolName, { points: number; items: Item[] }>>
   /** Points that start counting once a wallet has traded on 3 different days. */
   pending?: Partial<Record<PoolName, { points: number; days: number; items: Item[] }>>
@@ -76,6 +78,33 @@ export function computeAirdrop(db: DatabaseSync, n: Network, isBot: (a: string) 
     ...all<{ hook: string }>('SELECT DISTINCT hook FROM pools').map((h) => h.hook.toLowerCase()),
   ])
   const skip = (a: string | null | undefined) => !a || excluded.has(a) || isBot(a)
+
+  // ------------------------------------------------------------------ funding clusters
+  // A wallet's funder is whoever first sent it any token (not a pool, router or hook).
+  // Wallets sharing a funder that seeded 2+ others are treated as one.
+  const ROUTERS = ['0x1b341fdd55d56f8e08409a2c25ddfad93eb03c1a', '0x751cefb96ac88db5327d39e0fbdd5d882d80b430', '0x000000000022d473030f116ddee9f6b43ac78ba3']
+  const notFunder = new Set([...excluded].filter((a) => !EXCLUDED.includes(a)).concat(ROUTERS))
+  const firstIn = all<{ d: string; s: string }>(
+    `SELECT lower(dst) d, lower(src) s, MIN(block) b FROM transfers
+      WHERE lower(src) NOT IN (${[...notFunder].map(() => '?').join(',')}) AND src != dst GROUP BY lower(dst)`,
+    ...notFunder,
+  )
+  const funderOf = new Map<string, string>()
+  const seeded = new Map<string, number>()
+  for (const r of firstIn) seeded.set(r.s, (seeded.get(r.s) ?? 0) + 1)
+  for (const r of firstIn) {
+    const k = seeded.get(r.s)!
+    if (k >= 2 && k <= 200) funderOf.set(r.d, r.s) // more than 200: a contract or exchange, not a person
+  }
+  const clusterOf = (w: string) => funderOf.get(w) ?? (seeded.get(w) && (seeded.get(w) ?? 0) >= 2 && (seeded.get(w) ?? 0) <= 200 ? w : w)
+  const funded = (w: string, by: string) => {
+    let a: string | undefined = w
+    for (let i = 0; i < 3 && a; i++) {
+      a = funderOf.get(a)
+      if (a === by) return true
+    }
+    return false
+  }
 
   const scores = new Map<string, WalletScore>()
   const add = (w: string, pool: PoolName, label: string, points: number, detail?: string) => {
@@ -183,12 +212,18 @@ export function computeAirdrop(db: DatabaseSync, n: Network, isBot: (a: string) 
   for (const l of launches) {
     const m = buys.get(l.token)
     let q = 0
+    const clustersSeen = new Set<string>()
+    const creatorCluster = clusterOf(l.creator)
     for (const h of holdersOf.get(l.token) ?? []) {
       if (h === l.creator || skip(h)) continue
+      if (funded(h, l.creator) || funded(l.creator, h) || clusterOf(h) === creatorCluster) continue
+      const c = clusterOf(h)
+      if (c !== h && clustersSeen.has(c)) continue
       const b = m?.get(h)
       if (!b || b.hype < 0.02 || now - b.first < DAY) continue
       const others = [...(agg.get(h)?.tokens ?? [])].filter((t) => t !== l.token).length
       if (others < 2) continue
+      if (c !== h) clustersSeen.add(c)
       q++
     }
     qualifying.set(l.token, q)
@@ -199,7 +234,12 @@ export function computeAirdrop(db: DatabaseSync, n: Network, isBot: (a: string) 
   const profiles = new Map(
     all<{ token: string; profile: string }>('SELECT lower(token) token, profile FROM project_profiles').map((p) => [p.token, JSON.parse(p.profile) as { tagline?: string; about?: string; roadmap?: { status: string }[] }]),
   )
-  const github = new Set(all<{ token: string }>('SELECT lower(token) token FROM project_github').map((g) => g.token))
+  // A GitHub counts when the account was 90+ days old when it was verified.
+  const ghRows = all<{ token: string; verified_at: number; created_at: number | null; weeks: string | null }>(
+    `SELECT lower(g.token) token, g.verified_at, a.created_at, a.weeks FROM project_github g LEFT JOIN github_activity a ON a.token = lower(g.token)`,
+  )
+  const github = new Set(ghRows.filter((g) => g.created_at !== null && g.verified_at - g.created_at >= 90 * DAY).map((g) => g.token))
+  const commitWeeks = new Map(ghRows.map((g) => [g.token, JSON.parse(g.weeks ?? '[]') as number[]]))
   const posts = all<{ token: string; author: string; time: number }>('SELECT lower(token) token, lower(author) author, time FROM build_updates')
   const meta = new Map(all<{ token: string; description: string | null }>('SELECT lower(token) token, description FROM token_meta').map((m) => [m.token, m.description ?? '']))
   const ideaSymbols = new Set(
@@ -234,7 +274,9 @@ export function computeAirdrop(db: DatabaseSync, n: Network, isBot: (a: string) 
         if (github.has(c.token) && myPosts.length >= 3) add(w, 'builders', 'Shipped the fork', 1_500)
       }
     }
-    if (gh) add(w, 'builders', 'Verified GitHub', 1_000)
+    if (gh) add(w, 'builders', 'Verified GitHub', 1_000, 'account 90+ days old')
+    const cw = new Set(counted.filter((c) => github.has(c.token)).flatMap((c) => commitWeeks.get(c.token) ?? []))
+    if (cw.size) add(w, 'builders', 'Code pushed', 75 * cw.size, `${cw.size} weeks`)
     const wk = [...weeks].sort((a, b) => a - b)
     const logPts = wk.reduce((s, _, i) => s + (i >= 3 ? 150 : 100), 0)
     if (logPts) add(w, 'builders', 'Build-log weeks', logPts, `${wk.length} weeks`)
@@ -333,6 +375,44 @@ export function computeAirdrop(db: DatabaseSync, n: Network, isBot: (a: string) 
     for (const [w, amt] of burns) if (!skip(w)) add(w, 'holders', 'Burned $MESA by hand', (5 * amt) / 1_000, `${Math.round(amt).toLocaleString('en-US')} MESA`)
   }
 
+  // ------------------------------------------------------------------ $HYPE & $KNTQ OGs (og.ts takes the snapshot)
+  const kntq = Number((db.prepare("SELECT value FROM meta WHERE key = 'kntq_hype'").get() as { value: string } | undefined)?.value ?? 0)
+  const hasOg = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'og_snapshot'").get()
+  if (hasOg)
+    for (const o of all<{ wallet: string; khype_evm: number; kntq_evm: number; staked: number; spot_hype: number; spot_khype: number; spot_kntq: number }>('SELECT * FROM og_snapshot')) {
+      if (skip(o.wallet)) continue
+      const kn = o.kntq_evm + o.spot_kntq
+      const hype = o.khype_evm + o.spot_khype + o.staked + o.spot_hype + kn * kntq
+      if (hype < 1) continue
+      const parts = [
+        o.staked >= 0.01 ? `${o.staked.toFixed(2)} staked` : '',
+        o.khype_evm + o.spot_khype >= 0.01 ? `${(o.khype_evm + o.spot_khype).toFixed(2)} kHYPE` : '',
+        o.spot_hype >= 0.01 ? `${o.spot_hype.toFixed(2)} HYPE` : '',
+        kn >= 1 ? `${Math.round(kn).toLocaleString('en-US')} KNTQ` : '',
+      ].filter(Boolean)
+      add(o.wallet, 'og', 'Held at the snapshot', 10 * Math.sqrt(Math.min(10_000, hype)), parts.join(' · '))
+    }
+
+  // ------------------------------------------------------------------ one score per funding cluster in the trading pools
+  const members = new Map<string, string[]>()
+  for (const w of scores.keys()) {
+    const c = funderOf.get(w)
+    if (!c) continue
+    ;(members.get(c) ?? members.set(c, scores.has(c) ? [c] : []).get(c)!).push(w)
+  }
+  for (const [funder, ws] of members) {
+    if (ws.length < 2) continue
+    const trade = (w: string) => (scores.get(w)?.pools.mesaTraders?.points ?? 0) + (scores.get(w)?.pools.elysium?.points ?? 0)
+    const keep = ws.reduce((a, b) => (trade(b) > trade(a) ? b : a))
+    for (const w of ws) {
+      const s = scores.get(w)!
+      s.grouped = { funder, size: ws.length }
+      if (w === keep) continue
+      delete s.pools.mesaTraders
+      delete s.pools.elysium
+    }
+  }
+
   const totals = { builders: 0, mesaTraders: 0, holders: 0, elysium: 0, og: 0 } as Record<PoolName, number>
   for (const s of scores.values()) for (const [k, v] of Object.entries(s.pools)) totals[k as PoolName] += v!.points
   return { at: now, totals, wallets: scores.size, live: [...live], scores }
@@ -348,5 +428,5 @@ export function estimate(r: { totals: Record<PoolName, number> }, s: WalletScore
     }),
   ) as Record<PoolName, { points: number; mesa: number; items: Item[] }>
   const raw = Object.values(pools).reduce((a, p) => a + p.mesa, 0)
-  return { pools, pending: s?.pending ?? {}, mesa: Math.min(WALLET_CAP, raw), capped: raw > WALLET_CAP }
+  return { pools, pending: s?.pending ?? {}, grouped: s?.grouped ?? null, mesa: Math.min(WALLET_CAP, raw), capped: raw > WALLET_CAP }
 }
