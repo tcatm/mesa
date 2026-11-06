@@ -1,7 +1,7 @@
 import { API } from 'mesa-agent'
 import { config } from './config.js'
 import { chat, parseJson } from './llm.js'
-import { ACCENTS, botLogo } from './botlogo.js'
+import { botLogo, PROP_NAMES } from './botlogo.js'
 import { newsMesa as mesa } from './news.js'
 import { save, spentToday, state, type IdeaCoin } from './store.js'
 
@@ -12,7 +12,7 @@ import { save, spentToday, state, type IdeaCoin } from './store.js'
  * open idea. It doesn't build it: anyone can fork the idea from its page,
  * launch their own coin for it and ship it.
  *
- * Logos are free: a painted scene with the bot drawn on top in code (botlogo.ts).
+ * Logos are free, drawn in code (botlogo.ts): the bot in a pose with a prop that fits the idea.
  * Shares the news agent's wallet and model budget. At most
  * LAB_IDEAS_MAX_PER_DAY a day, spread evenly.
  */
@@ -41,9 +41,6 @@ const CATEGORIES = [
   'gaming infrastructure',
   'DAO and treasury tooling',
 ]
-/** Painting styles for the scene behind the bot, so the list doesn't all look alike. */
-const STYLES = ['bold flat vector', 'glossy 3D render', 'retro pixel art', 'playful cartoon', 'risograph print', 'neon line art', 'soft watercolour', 'low-poly', 'paper cut-out', 'isometric illustration', 'blueprint drawing', 'claymation style']
-const pick = <T>(a: T[]) => a[Math.floor(Math.random() * a.length)]!
 
 async function symbolFree(sym: string) {
   if (ideas().some((c) => c.symbol === sym) || state.projects.some((p) => p.symbol === sym)) return false
@@ -107,30 +104,8 @@ async function postProfile(token: string, c: IdeaCoin) {
   if (!r.ok) throw new Error(`project page: ${((await r.json().catch(() => ({}))) as { error?: string }).error ?? r.status}`)
 }
 
-/** The scene behind the bot, from a free image service; null if it keeps failing (the bot then gets a plain backdrop). */
-async function scene(subject: string, palette: string): Promise<{ img: Buffer; mime: string } | null> {
-  const prompt = `${pick(STYLES)} illustration of ${subject}, colour palette: ${palette}, the object large in the upper half of the frame with a simple background, no people, no faces, no robots, no characters, no text, no letters, no border`
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const r = await fetch(
-        `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true&seed=${Math.floor(Math.random() * 1e6)}`,
-        { signal: AbortSignal.timeout(60_000) },
-      )
-      if (!r.ok) throw new Error(String(r.status))
-      const img = Buffer.from(await r.arrayBuffer())
-      if (img.length < 2_000) throw new Error('empty image')
-      return { img, mime: r.headers.get('content-type') ?? 'image/jpeg' }
-    } catch {
-      await sleep(3_000)
-    }
-  }
-  return null
-}
-
-async function logo(subject: string, palette: string): Promise<string | null> {
-  const art = await scene(subject, palette)
-  const png = botLogo({ art: art?.img ?? null, mime: art?.mime, crop: !!art, accent: pick(ACCENTS), look: pick([-1, 0, 0, 1]) })
-  const url = await upload(png)
+async function logo(prop: string): Promise<string | null> {
+  const url = await upload(botLogo({ prop: PROP_NAMES.includes(prop) ? prop : undefined }))
   if (!url) log('The logo upload failed; launching without one')
   return url
 }
@@ -143,15 +118,15 @@ interface Answer {
   build?: string
   milestones?: string[]
   prop?: string
-  palette?: string
+  category?: string
 }
 
 /** Ideas written ahead, several per model call (much cheaper than one call each). */
-const queue: (Answer & { category: string })[] = []
+const queue: Answer[] = []
 const BATCH = 8
 
 async function refill() {
-  const category = pick(CATEGORIES)
+  const cats = [...CATEGORIES].sort(() => Math.random() - 0.5).slice(0, BATCH)
   const recent = [...queue.map((q) => `${q.name} ($${q.symbol})`), ...ideas().slice(0, 80).map((c) => `${c.name} ($${c.symbol})`)].join(', ')
   const raw = parseJson<{ ideas?: Answer[] } | Answer[]>(
     await chat({
@@ -162,22 +137,22 @@ async function refill() {
       system: `You are the Mesa Lab idea agent. Mesa is the launchpad for builders on Elysium, an EVM L2 (gas token HYPE). You come up with original, genuinely useful projects a solo builder or small team could build and ship on Elysium, give each a great name, and write each up as an open idea anyone can fork.
 Make them concrete and buildable: a real problem, a clear v1, and three milestones that each ship something. Names are short, memorable and original (one or two words, a coined word is good). Never use or imitate a real brand, product, company, crypto project or person.
 No trading signals, price predictions, guaranteed yields, gambling, airdrop farming or anything promising returns. No politics, adult content or anything that handles other people's private keys.`,
-      user: `Category: ${category}
+      user: `Categories, one idea each: ${cats.join('; ')}
 Ideas already launched (don't repeat or closely resemble): ${recent || 'none'}
 
-Write ${BATCH} different ideas in this category. Answer with JSON only:
-{"ideas": [{"name": "1-2 words, under 20 characters", "symbol": "3-6 capital letters", "tagline": "one line under 90 characters: what it does", "problem": "1-2 sentences, under 260 characters", "build": "2-3 sentences, under 380 characters: what v1 is and how it works on Elysium", "milestones": ["3 short milestones, each under 60 characters"], "prop": "one vivid physical object that stands for the idea, for its logo, under 12 words", "palette": "3 colours that suit it"}]}`,
+Write ${BATCH} different ideas, one per category above. Answer with JSON only:
+{"ideas": [{"name": "1-2 words, under 20 characters", "symbol": "3-6 capital letters", "tagline": "one line under 90 characters: what it does", "problem": "1-2 sentences, under 260 characters", "build": "2-3 sentences, under 380 characters: what v1 is and how it works on Elysium", "milestones": ["3 short milestones, each under 60 characters"], "category": "its category", "prop": "the one prop from this list that best stands for the idea, for its logo: ${PROP_NAMES.join(', ')}"}]}`,
     }),
   )
   const list = Array.isArray(raw) ? raw : (raw.ideas ?? [])
-  for (const x of list) queue.push({ ...x, category })
+  for (const x of list) queue.push(x)
 }
 
 async function makeIdea() {
   if (!queue.length) await refill()
   const a = queue.shift()
   if (!a) return log('The model returned no ideas; trying again soon')
-  const category = a.category
+  const category = String(a.category ?? 'builder tools').slice(0, 40)
   const name = String(a.name ?? '').trim().slice(0, 24)
   const symbol = String(a.symbol ?? '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6)
   const c: IdeaCoin = {
@@ -196,7 +171,7 @@ async function makeIdea() {
   if (!name || symbol.length < 3 || !c.tagline || !c.problem || !c.build || c.milestones.length < 2) return log('The idea came back incomplete; skipped')
   if (!(await symbolFree(symbol))) return log(`$${symbol} is taken on Elysium; skipped ${name}`)
 
-  c.image = await logo(String(a.prop ?? 'a small glowing tool').slice(0, 120), String(a.palette ?? 'bright, cheerful colours').slice(0, 80))
+  c.image = await logo(String(a.prop ?? '').trim().toLowerCase())
   if (config.dryRun) {
     ideas().unshift(c)
     save()
