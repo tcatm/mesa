@@ -11,6 +11,7 @@ import { UpdateError, listUpdates, migrateUpdates, postUpdate } from './updates.
 import { PX, tableBuilder } from './table.js'
 import { startMev } from './mev.js'
 import { getProject, migrateProjects, saveProfile, verifyGithub } from './projects.js'
+import { POOLS, TOTAL, estimate, type PoolName, type WalletScore } from './airdrop.js'
 
 const DAY = 86_400
 const HOUR = 3_600
@@ -39,6 +40,8 @@ type Row = Record<string, unknown>
  *   GET /mesa               $MESA burned, HYPE spent on buybacks, every buyback
  *   GET /stream            server-sent events: pool, trade, update (build log); a ping comment every 20s
  *   GET /health
+ *   GET /airdrop            the Builder Drop: pools, point totals, when it was last scored
+ *   GET /airdrop/:wallet    one wallet's provisional points and estimated $MESA
  */
 export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number) {
   startHypeUsd()
@@ -427,6 +430,26 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
     for (const s of streams) s.write(': ping\n\n')
   }, 20_000).unref()
 
+  // The Builder Drop is scored on its own thread every 10 minutes (airdrop.ts).
+  let drop: { at: number; totals: Record<PoolName, number>; wallets: number; live: string[]; scores: Map<string, WalletScore>; sorted: number[] } | null = null
+  {
+    const ts = import.meta.url.endsWith('.ts')
+    const w = new Worker(new URL(ts ? './airdropWorker.ts' : './airdropWorker.js', import.meta.url), {
+      workerData: { dbPath, network: n },
+      execArgv: ts ? ['--import', 'tsx/esm'] : [],
+    })
+    w.on('message', (m: { at: number; totals: Record<PoolName, number>; wallets: number; live: string[]; scores: [string, WalletScore][] } | null) => {
+      if (!m) return
+      const scores = new Map(m.scores)
+      const sorted = [...scores.values()].map((s) => estimate(m, s).mesa).sort((a, b) => b - a)
+      drop = { ...m, scores, sorted }
+    })
+    w.on('error', (e) => console.error(JSON.stringify({ airdropWorkerError: e.message })))
+    const run = () => w.postMessage({ bots: [...mev.bots.keys()].filter((b) => mev.isBot(b)) })
+    setTimeout(run, 30_000).unref()
+    setInterval(run, 10 * 60_000).unref()
+  }
+
   const server = createServer((req, res) => {
     res.setHeader('access-control-allow-origin', '*')
     res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS')
@@ -505,6 +528,27 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
       if (parts[0] === 'health' || parts.length === 0) return json({ ok: true, ...stats() })
       if (parts[0] === 'stats') return json(stats())
       if (parts[0] === 'mesa' && parts.length === 1) return json(mesaBurns())
+      if (parts[0] === 'airdrop' && parts.length === 1)
+        return json({ total: TOTAL, pools: POOLS, ready: !!drop, at: drop?.at ?? null, totals: drop?.totals ?? null, wallets: drop?.wallets ?? 0, liveCoins: drop?.live.length ?? 0 })
+      if (parts[0] === 'airdrop' && parts.length === 2) {
+        const w = parts[1]!.toLowerCase()
+        if (!/^0x[0-9a-f]{40}$/.test(w)) return json({ error: 'not an address' }, 400)
+        if (!drop) return json({ ready: false })
+        const e = estimate(drop, drop.scores.get(w))
+        let rank: number | null = null
+        if (e.mesa > 0) {
+          // Binary search the sorted (descending) estimates.
+          let lo = 0
+          let hi = drop.sorted.length
+          while (lo < hi) {
+            const mid = (lo + hi) >> 1
+            if (drop.sorted[mid]! > e.mesa) lo = mid + 1
+            else hi = mid
+          }
+          rank = lo + 1
+        }
+        return json({ ready: true, wallet: w, at: drop.at, total: TOTAL, poolsTotal: POOLS, totals: drop.totals, wallets: drop.wallets, rank, ...e })
+      }
       if (parts[0] === 'venues') return json(venues())
       if (parts[0] === 'bridge' && parts.length === 1) return json(bridgeStats(db))
       if (parts[0] === 'bridge' && parts[1] === 'lookup') {
