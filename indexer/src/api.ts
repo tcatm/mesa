@@ -352,6 +352,14 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
       `SELECT tx, timestamp, quote_amount hype, token_amount mesa FROM trades WHERE token = ? AND kind = 'buyback' ORDER BY block DESC, log_index DESC LIMIT 1000`,
       token,
     )
+    // Burns sent straight to the dead address (not by the buyback burner), e.g. a holder burning by hand.
+    const burner = n.mesa?.burner.toLowerCase() ?? ''
+    const manual = all(
+      `SELECT tx, block, src, amount mesa FROM transfers WHERE token = ? AND dst = ? AND src != ? ORDER BY block DESC LIMIT 200`,
+      token,
+      DEAD,
+      burner,
+    ).map((b) => ({ ...b, timestamp: blockTime(b.block as number) }))
     const t = now()
     const fees = all(
       `SELECT p.venue, COUNT(DISTINCT p.token) tokens FROM pools p JOIN mesa_launches m ON m.token = p.token GROUP BY p.venue`,
@@ -362,11 +370,24 @@ export function serve(db: DatabaseSync, dbPath: string, n: Network, port: number
       burnedPct: (burned / supply) * 100,
       hypeSpent: buybacks.reduce((a, b) => a + (b.hype as number), 0),
       buybacks: buybacks.length,
-      burned24h: buybacks.filter((b) => (b.timestamp as number) > t - DAY).reduce((a, b) => a + (b.mesa as number), 0),
+      burned24h: [...buybacks, ...manual]
+        .filter((b) => (b.timestamp as number) > t - DAY)
+        .reduce((a, b) => a + ((b as { mesa: number }).mesa), 0),
       lastAt: (buybacks[0]?.timestamp as number | undefined) ?? null,
       launches: fees.reduce((a, f) => a + (f.tokens as number), 0),
       recent: buybacks,
+      manual,
     }
+  }
+
+  /** A block's time, read from the nearest indexed trades (transfers don't store one). */
+  function blockTime(block: number): number {
+    const a = one('SELECT block, timestamp FROM trades WHERE block <= ? ORDER BY block DESC LIMIT 1', block)
+    const b = one('SELECT block, timestamp FROM trades WHERE block >= ? ORDER BY block ASC LIMIT 1', block)
+    if (!a && !b) return now()
+    if (!a || !b || a.block === b.block) return ((a ?? b)!.timestamp as number)
+    const f = (block - (a.block as number)) / ((b.block as number) - (a.block as number))
+    return Math.round((a.timestamp as number) + f * ((b.timestamp as number) - (a.timestamp as number)))
   }
 
   function stats() {
