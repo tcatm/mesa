@@ -1,11 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Mesa, API } from 'mesa-agent'
+import { createWalletClient, defineChain, http, parseEther, type Address } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
 import { config } from './config.js'
 import { BudgetError } from './llm.js'
 import { build, icon, idea, review, type Idea } from './make.js'
 import { serve } from './server.js'
-import { startNews } from './news.js'
+import { newsAddress, startNews } from './news.js'
 import { startIdeas } from './ideas.js'
 import { live } from './live.js'
 import { note, save, spentToday, state, walletKey, writeApp, type Project } from './store.js'
@@ -254,9 +256,25 @@ async function tick() {
   }
 }
 
+/** A one-off top-up of the idea agent's wallet from this one (LAB_FUND_IDEAS="<HYPE>:<id>"), once per id. */
+async function fundIdeas() {
+  const [amt, id] = config.fundIdeas.split(':')
+  const hype = Number(amt)
+  if (!id || !(hype > 0) || hype > 1 || (state.funded ?? []).includes(id) || config.dryRun) return
+  state.funded = [...(state.funded ?? []), id]
+  save() // marked first, so a crash can never send it twice
+  if ((await balance()) < hype + 0.02) return note(`Skipped sending ${hype} HYPE to the idea agent: not enough left over`)
+  const chain = defineChain({ id: 99901, name: 'Elysium', nativeCurrency: { name: 'HYPE', symbol: 'HYPE', decimals: 18 }, rpcUrls: { default: { http: ['https://rpc.mesa.cx'] } } })
+  const account = privateKeyToAccount(walletKey())
+  const wallet = createWalletClient({ account, chain, transport: http() })
+  const hash = await wallet.sendTransaction({ account, chain, to: newsAddress as Address, value: parseEther(String(hype)) })
+  note(`Sent ${hype} HYPE to the idea agent's wallet to fund its launches (${hash.slice(0, 10)}…)`)
+}
+
 serve({ address, balance: () => balance().catch(() => null) })
 startNews()
 startIdeas()
+void fundIdeas().catch((e) => note(`Couldn't send HYPE to the idea agent: ${String(e).slice(0, 120)}`))
 // A restart in the middle of a project leaves its last line saying "Building…".
 if (/^(Thinking of|Building) /.test(state.log[0]?.text ?? '')) note('Stopped before finishing that one: nothing was published or launched')
 console.log(JSON.stringify({ lab: 'started', address, enabled: config.enabled, dryRun: config.dryRun }))

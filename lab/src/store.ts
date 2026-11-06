@@ -41,6 +41,8 @@ export interface State {
   /** The idea agent (ideas.ts): open project ideas, each with a coin, for anyone to fork and build. */
   ideas?: IdeaCoin[]
   ideasLog?: { at: number; text: string }[]
+  /** One-off top-ups already sent (config.fundIdeas ids). */
+  funded?: string[]
 }
 
 export interface IdeaCoin {
