@@ -5,12 +5,14 @@ import type { DatabaseSync } from 'node:sqlite'
  *
  * A sandwich: wallet W trades one way (the front-run), another wallet trades
  * the same way right after (the victim), then W trades back the same number of
- * tokens (the back-run), all within a few blocks. W is marked as an MEV bot,
+ * tokens (the back-run), all within a few seconds. W is marked as an MEV bot,
  * on every token; the victim's trade is marked as sandwiched.
  *
  * Scans the last 3 days at start, then only new blocks every 30 seconds.
  */
-const WINDOW_BLOCKS = 10 // front-run to back-run, at most (bots sometimes take a few seconds)
+// Front-run to back-run, at most. In seconds, not blocks: Elysium makes a block
+// for nearly every transaction, so a few seconds can be dozens of blocks.
+const WINDOW_SECONDS = 20
 const SAME_AMOUNT = 0.01 // back-run size within 1% of the front-run's tokens
 const START_SECONDS = 3 * 86_400
 
@@ -19,6 +21,7 @@ interface T {
   token: string
   block: number
   log_index: number
+  timestamp: number
   trader: string | null
   side: string
   token_amount: number
@@ -40,20 +43,21 @@ export function startMev(db: DatabaseSync) {
         .get(Math.floor(Date.now() / 1000) - START_SECONDS) as { b: number | null }
       from = s.b ?? head
     }
-    // Re-read a few blocks back so a sandwich split across two scans is still whole.
+    // Re-read a little back so a sandwich split across two scans is still whole.
+    const since = (db.prepare('SELECT MIN(timestamp) t FROM trades WHERE block >= ?').get(from) as { t: number | null }).t
     const rows = db
       .prepare(
-        `SELECT tx, token, block, log_index, trader, side, token_amount FROM trades
-         WHERE block >= ? AND kind = 'trade' ORDER BY token, block, log_index`,
+        `SELECT tx, token, block, log_index, timestamp, trader, side, token_amount FROM trades
+         WHERE timestamp >= ? AND kind = 'trade' ORDER BY token, block, log_index`,
       )
-      .all(from - WINDOW_BLOCKS) as unknown as T[]
+      .all((since ?? Math.floor(Date.now() / 1000)) - WINDOW_SECONDS) as unknown as T[]
     for (let i = 0; i < rows.length; i++) {
       const a = rows[i]!
       if (!a.trader || seen.has(a.tx)) continue
       let victimsHere: string[] = []
       for (let j = i + 1; j < rows.length; j++) {
         const b = rows[j]!
-        if (b.token !== a.token || b.block > a.block + WINDOW_BLOCKS) break
+        if (b.token !== a.token || b.timestamp > a.timestamp + WINDOW_SECONDS) break
         if (b.trader === a.trader) {
           if (
             b.side !== a.side &&
