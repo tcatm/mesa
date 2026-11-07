@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "Shielded HYPE: circuit, keys, notes and proofs",
   "scripts": {
-    "build": "./scripts/build.sh"
+    "build": "./scripts/build.sh",
+    "test": "node --test test/*.test.mjs"
   },
   "license": "MIT",
   "dependencies": {
