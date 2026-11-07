@@ -1,8 +1,15 @@
 // Shit mode: while LAB_SHIT_MODE=1, every agent launches "shit token" ($SHIT)
 // with a pile-of-poo emoji logo instead of its own name and art.
 // Turn it off by setting LAB_SHIT_MODE=0 (or removing it) and redeploying.
+import { readFileSync } from 'node:fs'
 import { memeLogo } from './memelogo.js'
 import { config } from './config.js'
+
+/** With LAB_SHIT_LOGO=face, every shit token uses shit-logo.png instead of the poo emoji. */
+const face = (() => {
+  if (process.env.LAB_SHIT_LOGO !== 'face') return null
+  try { return readFileSync(new URL('../shit-logo.png', import.meta.url)) } catch { return null }
+})()
 
 export const shitMode = () => config.shitMode
 
@@ -11,7 +18,7 @@ interface Form { name: string; symbol: string; description?: string; image?: str
 async function poo(): Promise<string | undefined> {
   for (let i = 0; i < 2; i++) {
     try {
-      const l = await memeLogo(['pile of poo'], `shit-${Date.now()}`)
+      const l = face ? { png: face } : await memeLogo(['pile of poo'], `shit-${Date.now()}`)
       if (!l) return undefined
       const r = await fetch(config.uploadUrl, { method: 'POST', headers: { 'content-type': 'image/png' }, body: new Uint8Array(l.png) })
       const b = (await r.json()) as { url?: string }

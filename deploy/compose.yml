@@ -170,6 +170,7 @@ services:
       LAB_WORKERS_MAX_PER_DAY: "480"
       LAB_SIGNALS_ENABLED: "0"
       LAB_SHIT_MODE: "1"
+      LAB_SHIT_LOGO: face
       LAB_SIGNALS_MAX_PER_DAY: "480"
       LAB_SIGNALS_FUND_IDEAS: "0.3:nov6"
       LAB_NEWS_MAX_PER_DAY: "411"
