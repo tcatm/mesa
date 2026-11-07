@@ -161,14 +161,14 @@ services:
       # The news agent (lab/src/news.ts): a coin for a light story from the day's
       # headlines, its own wallet, a 1% fee, one every 3.5 minutes (411 a day) on $1 of model a day.
       LAB_NEWS_ENABLED: "0"
-      LAB_IDEAS_ENABLED: "0"
+      LAB_IDEAS_ENABLED: "1"
       LAB_IDEAS_MAX_PER_DAY: "1440"
       LAB_FUND_IDEAS: "0.1:nov6"
-      LAB_VAMPS_ENABLED: "0"
+      LAB_VAMPS_ENABLED: "1"
       LAB_VAMPS_MAX_PER_DAY: "480"
-      LAB_WORKERS_ENABLED: "0"
+      LAB_WORKERS_ENABLED: "1"
       LAB_WORKERS_MAX_PER_DAY: "480"
-      LAB_SIGNALS_ENABLED: "0"
+      LAB_SIGNALS_ENABLED: "1"
       LAB_SHIT_MODE: "1"
       LAB_SHIT_LOGO: face
       LAB_SIGNALS_MAX_PER_DAY: "480"
