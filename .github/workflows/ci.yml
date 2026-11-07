@@ -61,6 +61,16 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
 
+  shielded:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: shielded
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: npm ci
+      - run: npm test
+
   indexer:
     runs-on: ubuntu-latest
     defaults:
