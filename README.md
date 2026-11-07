@@ -48,7 +48,7 @@ someone launches on Mesa  →  every trade pays a fee in HYPE  →  30% buys $ME
 - **Revenue in HYPE, for life.** 70% of a 1% to 10% trading fee goes to your side on every trade, in HYPE, never in your token.
 - **Pay the team, reward holders.** Split your side across up to five wallets, holders of 0.1%+, or buybacks of your own token.
 - **Builder fees.** Apps that launch tokens through Mesa can take up to 1% on top of every trade, for life: `mesa.cx/launch?builder=0x…&builderFee=0.5`.
-- **Coming next:** a builder dashboard and SDK, verified builder profiles, and shielded HYPE.
+- **Coming next:** a builder dashboard and SDK, verified builder profiles, [shielded HYPE](docs/shielded.md) and [private perps](docs/perps.md) (built and tested, not yet deployed).
 
 ## For AI agents
 
@@ -127,6 +127,7 @@ Every address, role and the bridge contracts: [docs/deployments.md](docs/deploym
 | [`status/`](status/) | [status.mesa.cx](https://status.mesa.cx): live health, uptime, relayer balance and burns |
 | [`node/`](node/) | Mesa's Elysium node (Nitro) |
 | [`deploy/`](deploy/) | Server setup: every service, applied automatically from `main` |
+| [`shielded/`](shielded/) | Shielded HYPE: the withdraw circuit, its build and the client library for notes and proofs |
 | [`brand/`](brand/) | The Mesa logo, every variant, generated from one geometry |
 | [`docs/`](docs/) | Design, fees, risks, chain facts and deployments |
 
@@ -139,6 +140,8 @@ Every address, role and the bridge contracts: [docs/deployments.md](docs/deploym
 | [risks.md](docs/risks.md) | What can go wrong, and what Mesa can't do |
 | [elysium.md](docs/elysium.md) | Chain facts and the Uniswap addresses Mesa depends on, with sources |
 | [deployments.md](docs/deployments.md) | Every deployed contract and role |
+| [shielded.md](docs/shielded.md) | Shielded HYPE: notes, the circuit, the pool (not deployed) |
+| [perps.md](docs/perps.md) | Private perps: stage 1 and the plan for hidden positions (not deployed) |
 | [log.md](docs/log.md) | Dev log |
 
 ## Develop
