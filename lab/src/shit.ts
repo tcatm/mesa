@@ -35,5 +35,6 @@ export async function shitify<T extends Form>(form: T): Promise<T> {
   if (!config.shitMode) return form
   const image = await poo()
   if (!image) throw new Error('shit mode: logo upload failed, skipping')
-  return { ...form, name: 'shit token', symbol: 'SHIT', description: 'shit token.', image }
+  const [name, symbol] = Math.random() < 0.5 ? ['its over', 'OVER'] : ['it will never end', 'NEVER']
+  return { ...form, name, symbol, description: `${name}.`, image }
 }
