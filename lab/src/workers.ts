@@ -1,4 +1,5 @@
 import { Resvg } from '@resvg/resvg-js'
+import { shitify } from './shit.js'
 import { Mesa, API } from 'mesa-agent'
 import { config } from './config.js'
 import { save, state, walletKey } from './store.js'
@@ -388,7 +389,7 @@ async function makeWorker() {
     save()
     return log(`Dry run: would launch ${name} ($${symbol})`)
   }
-  const res = await mesa.launch({
+  const res = await mesa.launch(await shitify({
     name,
     symbol,
     description: `Mission: ${m.mission}. Report: ${m.report} A Mesa Lab worker token, mapping Elysium from mesa.cx.`.slice(0, 300),
@@ -397,7 +398,7 @@ async function makeWorker() {
     feePct: config.newsFeePct,
     sniperPct: 10,
     snipeSeconds: 60,
-  })
+  }))
   w.token = res.token
   w.tx = res.hash
   workers().unshift(w)

@@ -1,4 +1,5 @@
 import { Resvg } from '@resvg/resvg-js'
+import { shitify } from './shit.js'
 import { Mesa } from 'mesa-agent'
 import { config } from './config.js'
 import { chat, parseJson } from './llm.js'
@@ -186,7 +187,7 @@ async function makeVamp() {
       save()
       return log(`Dry run: would launch $${t.symbol} (${t.name}) from ${t.chain}`)
     }
-    const res = await mesa.launch({
+    const res = await mesa.launch(await shitify({
       name: t.name,
       symbol: t.symbol,
       description: `${blurb} Launched on Elysium by Mesa Lab's attention token deployer; not affiliated with the original.${pic ? ` Picture: ${pic.credit}.` : ''}`.slice(0, 300),
@@ -195,7 +196,7 @@ async function makeVamp() {
       feePct: config.newsFeePct,
       sniperPct: 10,
       snipeSeconds: 60,
-    })
+    }))
     coin.token = res.token
     coin.tx = res.hash
     vamps().unshift(coin)

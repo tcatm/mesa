@@ -13,6 +13,8 @@ export const config = {
   publicUrl: (env.LAB_PUBLIC_URL ?? 'https://api.mesa.cx/lab').replace(/\/$/, ''),
   /** Internal address of the market service, for image uploads. */
   uploadUrl: env.LAB_UPLOAD_URL ?? 'http://market:8085/upload',
+  /** Every agent launches "shit token" with a poo logo. */
+  shitMode: env.LAB_SHIT_MODE === '1',
   openrouterKey: env.OPENROUTER_API_KEY?.trim() ?? '',
   model: env.LAB_MODEL ?? 'anthropic/claude-sonnet-5.5',
   reviewModel: env.LAB_REVIEW_MODEL ?? 'anthropic/claude-haiku-5.5',

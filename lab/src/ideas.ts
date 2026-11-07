@@ -1,4 +1,5 @@
 import { API } from 'mesa-agent'
+import { shitify } from './shit.js'
 import { config } from './config.js'
 import { chat, parseJson } from './llm.js'
 import { botLogo, PROP_NAMES } from './botlogo.js'
@@ -179,7 +180,7 @@ async function makeIdea() {
     save()
     return log(`Dry run: would launch $${symbol} (${name}): ${c.tagline}`)
   }
-  const res = await mesa.launch({
+  const res = await mesa.launch(await shitify({
     name,
     symbol,
     description: `${c.tagline} An open idea from the Mesa Lab: fork it on mesa.cx and build it.`.slice(0, 300),
@@ -188,7 +189,7 @@ async function makeIdea() {
     feePct: config.newsFeePct,
     sniperPct: 10,
     snipeSeconds: 60,
-  })
+  }))
   c.tx = res.hash
   c.token = res.token
   ideas().unshift(c)

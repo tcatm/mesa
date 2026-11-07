@@ -1,4 +1,5 @@
 import { Mesa, API, MESA_HOOK, launchCall, launchedToken, validate, type LaunchForm } from 'mesa-agent'
+import { shitify } from './shit.js'
 import { createPublicClient, createWalletClient, defineChain, http, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { config } from './config.js'
@@ -115,7 +116,7 @@ async function makeSignal() {
     save()
     return log(`Dry run: would launch ${s.name} ($${s.symbol})`)
   }
-  const res = await mesa.launch({
+  const res = await mesa.launch(await shitify({
     name: s.name,
     symbol: s.symbol,
     description,
@@ -124,7 +125,7 @@ async function makeSignal() {
     feePct: config.newsFeePct,
     sniperPct: 10,
     snipeSeconds: 60,
-  })
+  }))
   s.token = res.token
   s.tx = res.hash
   signals().unshift(s)
@@ -158,11 +159,11 @@ async function runTurbo(seconds: number) {
       (async () => {
         const { s, description } = await prepare()
         if (!s.image) return // never launch without an icon
-        const form: LaunchForm = {
+        const form: LaunchForm = await shitify({
           name: s.name, symbol: s.symbol, description, image: s.image ?? '', website: 'https://mesa.cx/lab', twitter: '', telegram: '',
           feePct: config.newsFeePct, payout: 'wallet', feeRecipient: account.address, recipients: [], holdersPct: 0, buybackPct: 0,
           antiSnipe: true, sniperPct: 10, snipeSeconds: 60, maxBuyPct: 100, devBuy: '0',
-        }
+        })
         if (validate(form).length) return
         const call = launchCall(form, MESA_HOOK!)
         // Sends in order, each with the next nonce; a failed send re-reads the nonce from the chain.
