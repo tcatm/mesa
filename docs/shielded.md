@@ -65,8 +65,8 @@ The pool then:
 - pays `fee` to `relayer`.
 
 With non-empty `data`, the recipient must be a contract. It receives the HYPE
-through `onShieldedWithdraw(data)`. This is how a position opens straight from
-shielded funds ([perps.md](perps.md)).
+through `onShieldedWithdraw(data)`. A perp market can use it to open a
+position straight from shielded funds.
 
 A withdraw of 0 with a change note re-randomises a note. A partial withdraw
 breaks the link between deposit size and withdraw size.
