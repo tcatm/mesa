@@ -4,7 +4,8 @@
   "description": "Shielded HYPE: circuit, keys, notes and proofs",
   "scripts": {
     "build": "./scripts/build.sh",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "fixtures": "node scripts/fixtures.mjs"
   },
   "license": "MIT",
   "dependencies": {

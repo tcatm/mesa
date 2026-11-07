@@ -13,7 +13,7 @@ bytecode_hash = "none"
 # Each top-level call in a test is its own transaction, as on chain. The
 # per-transaction buy cap depends on this (transient storage).
 isolate = true
-fs_permissions = [{ access = "read", path = "./out" }]
+fs_permissions = [{ access = "read", path = "./out" }, { access = "read", path = "./test/fixtures" }]
 
 # The PoolManager (used only in tests) needs Uniswap's own settings to compile.
 # PoseidonT3 is hand-written assembly: via_ir only makes it bigger (over EIP-170).
