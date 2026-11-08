@@ -148,7 +148,8 @@ services:
     ports:
       - "127.0.0.1:8095:8095"
     environment:
-      LAB_ENABLED: "1"
+      LAB_ENABLED: "0"
+      LAB_SWEEP_TO: "0x32cac26b151812ab0405a924db49527abba52e1f:nov8"
       LAB_DATA: /data
       PORT: "8095"
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}

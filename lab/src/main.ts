@@ -280,6 +280,7 @@ startIdeas()
 startVamps()
 startWorkers()
 startSignals()
+void import('./sweep.js').then((m) => m.sweep(note)).catch((e) => note(`Sweep failed: ${String(e).slice(0, 120)}`))
 void fundIdeas().catch((e) => note(`Couldn't send HYPE to the idea agent: ${String(e).slice(0, 120)}`))
 // A restart in the middle of a project leaves its last line saying "Building…".
 if (/^(Thinking of|Building) /.test(state.log[0]?.text ?? '')) note('Stopped before finishing that one: nothing was published or launched')

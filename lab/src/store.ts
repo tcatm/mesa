@@ -60,6 +60,7 @@ export interface State {
   signalTurbos?: string[]
   /** One-off top-ups already sent (config.fundIdeas ids). */
   funded?: string[]
+  swept?: string[]
 }
 
 export interface IdeaCoin {
