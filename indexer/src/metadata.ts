@@ -13,6 +13,11 @@ import type { DatabaseSync } from 'node:sqlite'
  * indexing; tokens are checked once, whether or not anything was found.
  */
 const IPFS_GATEWAY = 'https://ipfs.io/ipfs/'
+/** Gateways raced for a launch's metadata file: any one answering is enough. */
+const GATEWAYS = [IPFS_GATEWAY, 'https://gateway.pinata.cloud/ipfs/', 'https://dweb.link/ipfs/', 'https://w3s.link/ipfs/']
+/** A new token whose image wasn't found yet is looked at again this often, while it is this young. */
+const RETRY_AFTER = 60
+const RETRY_FOR = 6 * 3600
 const BATCH = 20
 
 interface Meta {
@@ -95,7 +100,7 @@ function embeddedJson(s: string): Meta | null {
 
 async function fetchJson(u: string): Promise<Meta | null> {
   try {
-    const res = await fetch(u, { signal: AbortSignal.timeout(8_000), headers: { accept: 'application/json' } })
+    const res = await fetch(u, { signal: AbortSignal.timeout(10_000), headers: { accept: 'application/json' } })
     if (!res.ok) return null
     const type = res.headers.get('content-type') ?? ''
     if (type.startsWith('image/')) return { image: u }
@@ -134,8 +139,13 @@ export class MetadataWorker {
     for (const s of found) {
       const link = s.match(/(ipfs:\/\/[A-Za-z0-9/._-]{20,}|https:\/\/[^\s"'<>]{10,})/)?.[1]
       if (!link) continue
-      const u = ipfs(link)
-      const m = await fetchJson(u)
+      const m = link.startsWith('ipfs://')
+        ? await Promise.any(
+            GATEWAYS.map((g) =>
+              fetchJson(g + link.slice(7).replace(/^ipfs\//, '')).then((r) => r ?? Promise.reject(new Error('none'))),
+            ),
+          ).catch(() => null)
+        : await fetchJson(link)
       if (m) {
         if (m.image) m.image = url(m.image)
         return m
@@ -150,9 +160,14 @@ export class MetadataWorker {
         `SELECT p.token, p.tx FROM pools p
          JOIN (SELECT token, MIN(block) b FROM pools GROUP BY token) f ON f.token = p.token AND f.b = p.block
          LEFT JOIN token_meta m ON m.token = p.token
-         WHERE m.token IS NULL LIMIT ?`,
+         WHERE m.token IS NULL
+            OR (m.image IS NULL AND m.checked_at < ? AND p.timestamp > ?)
+         ORDER BY m.token IS NOT NULL, p.block DESC LIMIT ?`,
       )
-      .all(BATCH) as { token: string; tx: string }[]
+      .all(Math.floor(Date.now() / 1000) - RETRY_AFTER, Math.floor(Date.now() / 1000) - RETRY_FOR, BATCH) as {
+      token: string
+      tx: string
+    }[]
     if (!todo.length) return 0
     const [txs, receipts] = await Promise.all([
       this.rpcBatch(todo.map((t) => ({ method: 'eth_getTransactionByHash', params: [t.tx] }))),
@@ -177,7 +192,7 @@ export class MetadataWorker {
     for (;;) {
       try {
         const n = await this.step()
-        await sleep(n === BATCH ? 500 : 5_000)
+        await sleep(n === BATCH ? 500 : 2_000)
       } catch (e) {
         console.error(JSON.stringify({ metadataError: e instanceof Error ? e.message.slice(0, 200) : String(e) }))
         await sleep(15_000)

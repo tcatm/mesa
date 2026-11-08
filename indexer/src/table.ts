@@ -155,8 +155,49 @@ export function tableBuilder(db: DatabaseSync, n: Network) {
     }
   }
 
+  // What the slow layer last saw, so a new launch, name or image shows on the
+  // next build (seconds) rather than waiting for the minute's full rebuild.
+  const marks = db.prepare(
+    `SELECT (SELECT COALESCE(MAX(rowid), 0) FROM pools) pools,
+            (SELECT COALESCE(MAX(rowid), 0) FROM tokens) tokens,
+            (SELECT COALESCE(MAX(rowid), 0) FROM token_meta) meta`,
+  )
+  let mark = { pools: 0, tokens: 0, meta: 0 }
+
+  /** Adds what arrived since the last look (new pools, tokens, images) to the slow layer. */
+  function catchUp(S: Slow) {
+    const m = marks.get() as typeof mark
+    if (m.pools > mark.pools) {
+      const fresh = all(
+        `SELECT p.token, p.venue, p.quote, p.creator, p.block, p.timestamp, p.initial_price, p.hook, p.pool_manager FROM pools p
+         WHERE p.rowid > ? AND p.block = (SELECT MIN(block) FROM pools WHERE token = p.token)`,
+        mark.pools,
+      )
+      const known = new Set(S.pools.map((p) => p.token))
+      for (const p of fresh) {
+        if (known.has(p.token)) continue
+        known.add(p.token)
+        S.pools.push(p)
+        const a = p.token as string
+        const l = val(lastPrice.get(a))
+        if (l !== undefined) S.last.set(a, l)
+        const f = val(firstPrice.get(a))
+        if (f !== undefined) S.first.set(a, f)
+      }
+    }
+    if (m.tokens > mark.tokens)
+      for (const r of all('SELECT * FROM tokens WHERE rowid > ?', mark.tokens)) S.tokens.set(r.address, r)
+    if (m.meta > mark.meta)
+      for (const r of all('SELECT token, image FROM token_meta WHERE rowid > ? AND image IS NOT NULL', mark.meta))
+        if (!(String(r.token) in IMAGE_OVERRIDES)) S.images.set(r.token, r.image)
+    mark = m
+  }
+
   function build(): Row[] {
-    if (!slow || Date.now() - slow.at > 60_000) slow = buildSlow()
+    if (!slow || Date.now() - slow.at > 60_000) {
+      mark = marks.get() as typeof mark
+      slow = buildSlow()
+    } else catchUp(slow)
     const S = slow
     const t = now()
     const day = new Map(
