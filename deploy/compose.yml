@@ -40,7 +40,9 @@ services:
       - "127.0.0.1:8545:8545"
     environment:
       NETWORK: mainnet
-      MODE: inbox
+      # Elysium's public sequencer is open: transactions go straight to it
+      # (SEND_RPC, default the official RPC); reads stay on our node.
+      MODE: direct
       UPSTREAM_RPC: http://elysium:8547
       PARENT_RPC: ${PARENT_RPC}
       RELAYER_KEY: ${RELAYER_KEY}

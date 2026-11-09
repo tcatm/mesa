@@ -15,13 +15,15 @@
  *    it is executed.
  *  - everything else is forwarded to UPSTREAM_RPC.
  *
- * With MODE=direct (once the public sequencer is open), transactions are
- * forwarded upstream like any RPC and the relay is just a proxy.
+ * With MODE=direct (now that the public sequencer is open), transactions are
+ * sent straight to Elysium's sequencer (SEND_RPC) and reads still go to
+ * UPSTREAM_RPC.
  *
  * Env:
  *   NETWORK        mainnet | testnet                  (default mainnet)
  *   RELAYER_KEY    HyperEVM key that pays inbox gas    (required in inbox mode)
  *   UPSTREAM_RPC   Elysium RPC for reads; ideally one that includes pending inbox messages
+ *   SEND_RPC       where direct mode sends transactions (default: Elysium's official RPC)
  *   PARENT_RPC     HyperEVM RPC
  *   MODE           inbox | direct                     (default inbox)
  *   ALLOW_TO       comma-separated contract addresses a relayed transaction may call
@@ -39,9 +41,10 @@ import { BigNumber, Contract, Wallet, providers, utils } from 'ethers'
 
 type Net = 'mainnet' | 'testnet'
 
-const NETWORKS: Record<Net, { chainId: number; inbox: string; upstream: string; parent: string }> = {
+const NETWORKS: Record<Net, { chainId: number; inbox: string; upstream: string; parent: string; send: string[] }> = {
   mainnet: {
     chainId: 99901,
+    send: ['https://rpc.elysium.kinetiq.xyz', 'https://rpc.agoradex.app'],
     inbox: '0xce59f8b65ad41c9dae4c07a0571a39824bd92cff',
     upstream: 'https://rpc.agoradex.app',
     parent: 'https://rpc.hyperliquid.xyz/evm',
@@ -51,6 +54,7 @@ const NETWORKS: Record<Net, { chainId: number; inbox: string; upstream: string; 
     inbox: '0x11178Df40CBf87a4343f4B3F8B09B366ceFA8Ec0',
     upstream: 'https://testnet-rpc.elysium.kinetiq.xyz',
     parent: 'https://rpc.hyperliquid-testnet.xyz/evm',
+    send: ['https://testnet-rpc.elysium.kinetiq.xyz'],
   },
 }
 
@@ -60,6 +64,7 @@ if (!NETWORKS[net]) throw new Error('NETWORK must be mainnet or testnet')
 const cfg = NETWORKS[net]
 const mode = env.MODE === 'direct' ? 'direct' : 'inbox'
 const upstreamUrl = env.UPSTREAM_RPC ?? cfg.upstream
+const sendUrls = env.SEND_RPC ? env.SEND_RPC.split(',').map((u) => u.trim()).filter(Boolean) : cfg.send
 const allowTo = new Set(
   (env.ALLOW_TO ?? '')
     .split(',')
@@ -283,8 +288,8 @@ interface RpcReq {
   params?: unknown[]
 }
 
-async function forward(req: RpcReq): Promise<unknown> {
-  const res = await fetch(upstreamUrl, {
+async function forward(req: RpcReq, url = upstreamUrl): Promise<unknown> {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: req.method, params: req.params ?? [] }),
@@ -294,8 +299,26 @@ async function forward(req: RpcReq): Promise<unknown> {
   return body.result
 }
 
+/**
+ * Direct mode: hand the signed transaction to the sequencer. A transaction the
+ * chain refuses (fee, nonce, funds) comes back with the chain's own error; only
+ * an unreachable endpoint moves on to the next one.
+ */
+async function sendDirect(raw: string): Promise<string> {
+  let last: unknown
+  for (const url of sendUrls) {
+    try {
+      return (await forward({ jsonrpc: '2.0', id: 1, method: 'eth_sendRawTransaction', params: [raw] }, url)) as string
+    } catch (e) {
+      if (e instanceof RpcError) throw e
+      last = e
+    }
+  }
+  throw new RpcError(-32000, `could not reach Elysium's sequencer: ${last instanceof Error ? last.message : String(last)}`)
+}
+
 async function sendRaw(raw: string, ip: string): Promise<string> {
-  if (mode === 'direct') return (await forward({ jsonrpc: '2.0', id: 1, method: 'eth_sendRawTransaction', params: [raw] })) as string
+  if (mode === 'direct') return sendDirect(raw)
 
   let tx: ReturnType<typeof utils.parseTransaction>
   try {
